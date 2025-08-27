@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  meetily-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    ports:
+      - "5167:5167"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DATABASE_PATH=/app/data/meeting_minutes.db
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5167/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

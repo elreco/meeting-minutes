@@ -26,7 +26,7 @@ type SummaryStatus = 'idle' | 'processing' | 'summarizing' | 'regenerating' | 'c
 
 export default function PageContent({ meeting, summaryData }: { meeting: any, summaryData: Summary }) {
   const [transcripts, setTranscripts] = useState<Transcript[]>(meeting.transcripts);
-  
+
 
   const [showSummary, setShowSummary] = useState(false);
   const [summaryStatus, setSummaryStatus] = useState<SummaryStatus>('idle');
@@ -53,7 +53,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
   const [meetings, setLocalMeetings] = useState<CurrentMeeting[]>([]);
   const [settingsSaveSuccess, setSettingsSaveSuccess] = useState<boolean | null>(null);
   const { setCurrentMeeting, setMeetings, meetings: sidebarMeetings , serverAddress} = useSidebar();
-  
+
   // Keep local meetings state in sync with sidebar meetings
   useEffect(() => {
     setLocalMeetings(sidebarMeetings);
@@ -103,7 +103,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
         console.log('Waiting for server address to load before fetching configurations');
         return;
       }
-      
+
       try {
         const data = await invokeTauri('api_get_transcript_config', {}) as any;
         if (data && data.provider !== null) {
@@ -123,7 +123,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
   //     const timer = setTimeout(() => {
   //       setSettingsSaveSuccess(null);
   //     }, 3000); // Same duration as toast
-      
+
   //     return () => clearTimeout(timer);
   //   }
   // }, [settingsSaveSuccess]);
@@ -139,21 +139,21 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
       }
 
       setOriginalTranscript(fullTranscript);
-      
+
       console.log('Generating summary for transcript length:', fullTranscript.length);
-      
+
       // Track summary generation started
       await Analytics.trackSummaryGenerationStarted(
         modelConfig.provider,
         modelConfig.model,
         fullTranscript.length
       );
-      
+
       // Track custom prompt usage if present
       if (customPrompt.trim().length > 0) {
         await Analytics.trackCustomPromptUsed(customPrompt.trim().length);
       }
-      
+
       // Process transcript and get process_id
       console.log('Processing transcript...');
       const result = await invokeTauri('api_process_transcript', {
@@ -183,7 +183,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
             setSummaryError(result.error || 'Unknown error');
             setSummaryStatus('error');
             clearInterval(pollInterval);
-            
+
             // Track summary generation error
             await Analytics.trackSummaryGenerationCompleted(
               modelConfig.provider,
@@ -213,7 +213,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
               setSummaryError(errorMsg);
               setSummaryStatus('error');
               clearInterval(pollInterval);
-              
+
               // Track summary generation failure
               await Analytics.trackSummaryGenerationCompleted(
                 modelConfig.provider,
@@ -233,30 +233,30 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
             if (MeetingName) {
               setMeetingTitle(MeetingName);
               // Update meetings with new title
-              const updatedMeetings = sidebarMeetings.map((m: CurrentMeeting) => 
+              const updatedMeetings = sidebarMeetings.map((m: CurrentMeeting) =>
                 m.id === meeting.id ? { id: m.id, title: MeetingName } : m
               );
               setMeetings(updatedMeetings);
               setCurrentMeeting({ id: meeting.id, title: MeetingName });
             }
-            
+
             // Format the summary data with consistent styling - PRESERVE ORDER
             const formattedSummary: Summary = {};
-            
+
             // Use section order if available to maintain exact order and handle duplicates
             const sectionKeys = result.data._section_order || Object.keys(summaryData);
-            
+
             for (const key of sectionKeys) {
               try {
                 const section = summaryData[key];
                 // Comprehensive null checks to prevent errors
-                if (section && 
-                    typeof section === 'object' && 
-                    'title' in section && 
+                if (section &&
+                    typeof section === 'object' &&
+                    'title' in section &&
                     'blocks' in section) {
-                  
+
                   const typedSection = section as { title?: string; blocks?: any[] };
-                  
+
                   // Ensure blocks is an array before mapping
                   if (Array.isArray(typedSection.blocks)) {
                     formattedSummary[key] = {
@@ -287,7 +287,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
 
             setAiSummary(formattedSummary);
             setSummaryStatus('completed');
-            
+
             // Track successful summary generation
             await Analytics.trackSummaryGenerationCompleted(
               modelConfig.provider,
@@ -304,7 +304,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
           }
           setSummaryStatus('error');
           clearInterval(pollInterval);
-          
+
           // Track summary generation error
           await Analytics.trackSummaryGenerationCompleted(
             modelConfig.provider,
@@ -327,7 +327,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
         setSummaryError('Failed to generate summary: Unknown error');
       }
       setSummaryStatus('error');
-      
+
       // Track summary generation error
       await Analytics.trackSummaryGenerationCompleted(
         modelConfig.provider,
@@ -352,13 +352,13 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
           }))
         }
       };
-      
+
       const payload = {
         meetingId: meeting.id,
         summary: formattedSummary
       };
       console.log('Saving meeting summary with payload:', payload);
-      
+
       await invokeTauri('api_save_meeting_summary', {
         meetingId: payload.meetingId,
         summary: payload.summary,
@@ -386,7 +386,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
   const handleSummaryChange = (newSummary: Summary) => {
     setAiSummary(newSummary);
     debouncedSaveSummary(newSummary);
-    
+
     // Track summary editing
     Analytics.trackFeatureUsed('summary_edited');
   };
@@ -423,14 +423,14 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
 
     try {
       console.log('Regenerating summary with original transcript...');
-      
+
       // Track summary regeneration started
       await Analytics.trackSummaryGenerationStarted(
         modelConfig.provider,
         modelConfig.model,
         originalTranscript.length
       );
-      
+
       // Process transcript and get process_id
       console.log('Processing transcript...');
       const result = await invokeTauri('api_process_transcript', {
@@ -464,15 +464,15 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
 
           if (result.status === 'completed' && result.data) {
             clearInterval(pollInterval);
-            
+
             // Remove MeetingName from data before formatting
             const { MeetingName, ...summaryData } = result.data;
-            
+
             // Update meeting title if available
             if (MeetingName) {
               setMeetingTitle(MeetingName);
               // Update meetings with new title
-              const updatedMeetings = sidebarMeetings.map((m: CurrentMeeting) => 
+              const updatedMeetings = sidebarMeetings.map((m: CurrentMeeting) =>
                 m.id === meeting.id ? { id: m.id, title: MeetingName } : m
               );
               setMeetings(updatedMeetings);
@@ -481,21 +481,21 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
 
             // Format the summary data with consistent styling - PRESERVE ORDER
             const formattedSummary: Summary = {};
-            
+
             // Use section order if available to maintain exact order and handle duplicates
             const sectionKeys = result.data._section_order || Object.keys(summaryData);
-            
+
             for (const key of sectionKeys) {
               try {
                 const section = summaryData[key];
                 // Comprehensive null checks to prevent errors
-                if (section && 
-                    typeof section === 'object' && 
-                    'title' in section && 
+                if (section &&
+                    typeof section === 'object' &&
+                    'title' in section &&
                     'blocks' in section) {
-                  
+
                   const typedSection = section as { title?: string; blocks?: any[] };
-                  
+
                   // Ensure blocks is an array before mapping
                   if (Array.isArray(typedSection.blocks)) {
                     formattedSummary[key] = {
@@ -526,7 +526,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
 
             setAiSummary(formattedSummary);
             setSummaryStatus('completed');
-            
+
             // Track successful summary regeneration
             await Analytics.trackSummaryGenerationCompleted(
               modelConfig.provider,
@@ -535,7 +535,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
             );
           } else if (result.status === 'error') {
             clearInterval(pollInterval);
-            
+
             // Track summary regeneration error
             await Analytics.trackSummaryGenerationCompleted(
               modelConfig.provider,
@@ -556,7 +556,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
           }
           setSummaryStatus('error');
           setAiSummary(null);
-          
+
           // Track summary regeneration error
           await Analytics.trackSummaryGenerationCompleted(
             modelConfig.provider,
@@ -578,7 +578,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
       }
       setSummaryStatus('error');
       setAiSummary(null);
-      
+
       // Track summary regeneration error
       await Analytics.trackSummaryGenerationCompleted(
         modelConfig.provider,
@@ -604,7 +604,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
       console.log('No transcripts available for summary');
       return;
     }
-    
+
     try {
       await generateAISummary(customPrompt);
     } catch (error) {
@@ -624,7 +624,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
         title: meetingTitle
       };
       console.log('Saving meeting title with payload:', payload);
-      
+
       await invokeTauri('api_save_meeting_title', {
         meetingId: meeting.id,
         title: meetingTitle,
@@ -632,9 +632,9 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
 
       console.log('Save meeting title success');
 
-      
+
       // Update meetings with new title
-      const updatedMeetings = sidebarMeetings.map((m: CurrentMeeting) => 
+      const updatedMeetings = sidebarMeetings.map((m: CurrentMeeting) =>
         m.id === meeting.id ? { id: m.id, title: meetingTitle } : m
       );
       setMeetings(updatedMeetings);
@@ -650,27 +650,27 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
       return false;
     }
   };
-  
+
   // Function to save all changes (title and summary)
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean | null>(null);
-  
+
   const saveAllChanges = async () => {
     setIsSaving(true);
     setSaveSuccess(null);
-    
+
     try {
       // Save meeting title
       const titleSaved = await handleSaveMeetingTitle();
-      
+
       // Save summary if it exists
       let summarySaved = true;
       if (aiSummary) {
         await handleSaveSummary(aiSummary);
       }
-      
+
       setSaveSuccess(titleSaved && summarySaved);
-      
+
       // Show success message briefly
       setTimeout(() => {
         setSaveSuccess(null);
@@ -693,10 +693,10 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
         apiKey: configToSave.apiKey ?? null
       };
       console.log('Saving model config with payload:', payload);
-      
+
       // Track model configuration change
       if (updatedConfig && (
-        updatedConfig.provider !== modelConfig.provider || 
+        updatedConfig.provider !== modelConfig.provider ||
         updatedConfig.model !== modelConfig.model
       )) {
         await Analytics.trackModelChanged(
@@ -706,7 +706,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
           updatedConfig.model
         );
       }
-      
+
       await invokeTauri('api_save_model_config', {
         provider: payload.provider,
         model: payload.model,
@@ -720,7 +720,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
 
       await Analytics.trackSettingsChanged('model_config', `${payload.provider}_${payload.model}`);
 
-      
+
     } catch (error) {
       console.error('Failed to save model config:', error);
       setSettingsSaveSuccess(false);
@@ -728,7 +728,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
         setError(error.message);
       } else {
         setError('Failed to save model config: Unknown error');
-      } 
+      }
     }
   };
 
@@ -741,15 +741,15 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
         apiKey: configToSave.apiKey ?? null
       };
       console.log('Saving transcript config with payload:', payload);
-      
-      
+
+
       await invokeTauri('api_save_transcript_config', {
         provider: payload.provider,
         model: payload.model,
         api_key: payload.apiKey,
       });
 
-      
+
       console.log('Save transcript config success');
       setSettingsSaveSuccess(true);
       const transcriptConfigToSave = updatedConfig || transcriptModelConfig;
@@ -850,29 +850,23 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
                           <DialogTitle>Model Settings</DialogTitle>
                         </VisuallyHidden>
                         <SettingTabs
-                          modelConfig={modelConfig}
-                          setModelConfig={setModelConfig}
-                          onSave={handleSaveModelConfig}
-                          transcriptModelConfig={transcriptModelConfig}
-                          setTranscriptModelConfig={setTranscriptModelConfig}
-                          onSaveTranscript={handleSaveTranscriptConfig}
                           setSaveSuccess={setSettingsSaveSuccess}
                         />
                         {settingsSaveSuccess !== null && (
                           <DialogFooter>
-                            <MessageToast 
-                              message={settingsSaveSuccess ? 'Settings saved successfully' : 'Failed to save settings'} 
-                              type={settingsSaveSuccess ? 'success' : 'error'} 
+                            <MessageToast
+                              message={settingsSaveSuccess ? 'Settings saved successfully' : 'Failed to save settings'}
+                              type={settingsSaveSuccess ? 'success' : 'error'}
                               show={settingsSaveSuccess !== null}
                               setShow={() => setSettingsSaveSuccess(null)}
                             />
                           </DialogFooter>
                         )}
                       </DialogContent>
-                      
+
 
                     </Dialog>
-                  
+
                   </>
                 )}
               </div>
@@ -883,7 +877,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
           <div className="flex-1 overflow-y-auto pb-4">
             <TranscriptView transcripts={transcripts} />
           </div>
-          
+
           {/* Custom prompt input at bottom of transcript section */}
           {!isRecording && transcripts.length > 0 && (
             <div className="p-1 border-t border-gray-200">
@@ -1011,9 +1005,9 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
                 </div>
               )}
               <div className="flex-1 overflow-y-auto p-4">
-                <AISummary 
-                  summary={aiSummary} 
-                  status={summaryStatus} 
+                <AISummary
+                  summary={aiSummary}
+                  status={summaryStatus}
                   error={summaryError}
                   onSummaryChange={handleSummaryChange}
                   onRegenerateSummary={() => {

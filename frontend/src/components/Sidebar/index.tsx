@@ -34,12 +34,12 @@ interface SidebarItem {
 
 const Sidebar: React.FC = () => {
   const router = useRouter();
-  const { 
-    currentMeeting, 
-    setCurrentMeeting, 
-    sidebarItems, 
-    isCollapsed, 
-    toggleCollapse, 
+  const {
+    currentMeeting,
+    setCurrentMeeting,
+    sidebarItems,
+    isCollapsed,
+    toggleCollapse,
     isMeetingActive,
     isRecording,
     handleRecordingToggle,
@@ -64,7 +64,7 @@ const Sidebar: React.FC = () => {
     model: 'large-v3',
   });
   const [settingsSaveSuccess, setSettingsSaveSuccess] = useState<boolean | null>(null);
-  
+
   // Ensure 'meetings' folder is always expanded
   useEffect(() => {
     if (!expandedFolders.has('meetings')) {
@@ -84,7 +84,7 @@ const Sidebar: React.FC = () => {
 
 
   const [deleteModalState, setDeleteModalState] = useState<{ isOpen: boolean; itemId: string | null }>({ isOpen: false, itemId: null });
-  
+
   useEffect(() => {
     setModelConfig({
       provider: 'ollama',
@@ -97,7 +97,7 @@ const Sidebar: React.FC = () => {
         console.log('Waiting for server address to load before fetching model config');
         return;
       }
-      
+
       try {
         const data = await invoke('api_get_model_config') as any;
         if (data && data.provider !== null) {
@@ -124,7 +124,7 @@ const Sidebar: React.FC = () => {
         console.log('Waiting for server address to load before fetching transcript settings');
         return;
       }
-      
+
       try {
         const data = await invoke('api_get_transcript_config') as any;
         if (data && data.provider !== null) {
@@ -136,13 +136,13 @@ const Sidebar: React.FC = () => {
     };
     fetchTranscriptSettings();
   }, [serverAddress]);
-  
-  
-  
+
+
+
   // Handle model config save
   const handleSaveModelConfig = async (config: ModelConfig) => {
     try {
-      await invoke('api_save_model_config', { 
+      await invoke('api_save_model_config', {
         provider: config.provider,
         model: config.model,
         whisperModel: config.whisperModel,
@@ -152,7 +152,7 @@ const Sidebar: React.FC = () => {
       setModelConfig(config);
       console.log('Model config saved successfully');
       setSettingsSaveSuccess(true);
-      
+
       // Track settings change
       await Analytics.trackSettingsChanged('model_config', `${config.provider}_${config.model}`);
     } catch (error) {
@@ -170,16 +170,16 @@ const Sidebar: React.FC = () => {
         apiKey: configToSave.apiKey ?? null
       };
       console.log('Saving transcript config with payload:', payload);
-      
+
       await invoke('api_save_transcript_config', {
         provider: payload.provider,
         model: payload.model,
         apiKey: payload.apiKey,
       });
 
-      
+
       setSettingsSaveSuccess(true);
-      
+
       // Track settings change
       const transcriptConfigToSave = updatedConfig || transcriptModelConfig;
       await Analytics.trackSettingsChanged('transcript_config', `${transcriptConfigToSave.provider}_${transcriptConfigToSave.model}`);
@@ -188,17 +188,17 @@ const Sidebar: React.FC = () => {
       setSettingsSaveSuccess(false);
     }
   };
-  
+
   // Handle search input changes
   const handleSearchChange = useCallback(async (value: string) => {
     setSearchQuery(value);
-    
+
     // If search query is empty, just return to normal view
     if (!value.trim()) return;
-    
+
     // Search through transcripts
     await searchTranscripts(value);
-    
+
     // Make sure the meetings folder is expanded when searching
     if (!expandedFolders.has('meetings')) {
       const newExpanded = new Set(expandedFolders);
@@ -206,40 +206,40 @@ const Sidebar: React.FC = () => {
       setExpandedFolders(newExpanded);
     }
   }, [expandedFolders, searchTranscripts]);
-  
+
   // Combine search results with sidebar items
   const filteredSidebarItems = useMemo(() => {
     if (!searchQuery.trim()) return sidebarItems;
-    
+
     // If we have search results, highlight matching meetings
     if (searchResults.length > 0) {
       // Get the IDs of meetings that matched in transcripts
       const matchedMeetingIds = new Set(searchResults.map(result => result.id));
-      
+
       return sidebarItems
         .map(folder => {
           // Always include folders in the results
           if (folder.type === 'folder') {
             if (!folder.children) return folder;
-            
+
             // Filter children based on search results or title match
             const filteredChildren = folder.children.filter(item => {
               // Include if the meeting ID is in our search results
               if (matchedMeetingIds.has(item.id)) return true;
-              
+
               // Or if the title matches the search query
               return item.title.toLowerCase().includes(searchQuery.toLowerCase());
             });
-            
+
             return {
               ...folder,
               children: filteredChildren
             };
           }
-          
+
           // For non-folder items, check if they match the search
-          return (matchedMeetingIds.has(folder.id) || 
-                 folder.title.toLowerCase().includes(searchQuery.toLowerCase())) 
+          return (matchedMeetingIds.has(folder.id) ||
+                 folder.title.toLowerCase().includes(searchQuery.toLowerCase()))
                  ? folder : undefined;
         })
         .filter((item): item is SidebarItem => item !== undefined); // Type-safe filter
@@ -250,18 +250,18 @@ const Sidebar: React.FC = () => {
           // Always include folders in the results
           if (folder.type === 'folder') {
             if (!folder.children) return folder;
-            
+
             // Filter children based on search query
-            const filteredChildren = folder.children.filter(item => 
+            const filteredChildren = folder.children.filter(item =>
               item.title.toLowerCase().includes(searchQuery.toLowerCase())
             );
-            
+
             return {
               ...folder,
               children: filteredChildren
             };
           }
-          
+
           // For non-folder items, check if they match the search
           return folder.title.toLowerCase().includes(searchQuery.toLowerCase()) ? folder : undefined;
         })
@@ -275,7 +275,7 @@ const Sidebar: React.FC = () => {
     const payload = {
       meetingId: itemId
     };
-    
+
     try{
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('api_delete_meeting', {
@@ -284,10 +284,10 @@ const Sidebar: React.FC = () => {
       console.log('Meeting deleted successfully');
       const updatedMeetings = meetings.filter((m: CurrentMeeting) => m.id !== itemId);
       setMeetings(updatedMeetings);
-      
+
       // Track meeting deletion
       Analytics.trackMeetingDeleted(itemId);
-      
+
       // If deleting the active meeting, navigate to home
       if (currentMeeting?.id === itemId) {
         setCurrentMeeting({ id: 'intro-call', title: '+ New Call' });
@@ -297,7 +297,7 @@ const Sidebar: React.FC = () => {
       console.error('Failed to delete meeting:', error);
     }
   };
-  
+
   const handleDeleteConfirm = () => {
     if (deleteModalState.itemId) {
       handleDelete(deleteModalState.itemId);
@@ -339,7 +339,7 @@ const Sidebar: React.FC = () => {
             <Mic className="w-5 h-5 text-white" />
           )}
         </button>
-        
+
         <button
           onClick={() => router.push('/')}
           className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
@@ -347,7 +347,7 @@ const Sidebar: React.FC = () => {
         >
           <Home className="w-5 h-5 text-gray-600" />
         </button>
-        
+
         <button
           onClick={() => {
             if (isCollapsed) toggleCollapse();
@@ -389,16 +389,16 @@ const Sidebar: React.FC = () => {
             />
             <DialogFooter>
                     {settingsSaveSuccess !== null && (
-                      <MessageToast 
-                        message={settingsSaveSuccess ? 'Settings saved successfully' : 'Failed to save settings'} 
-                        type={settingsSaveSuccess ? 'success' : 'error'} 
+                      <MessageToast
+                        message={settingsSaveSuccess ? 'Settings saved successfully' : 'Failed to save settings'}
+                        type={settingsSaveSuccess ? 'success' : 'error'}
                         show={settingsSaveSuccess !== null}
                         setShow={() => setSettingsSaveSuccess(null)}
                       />
                     )}
                   </DialogFooter>
           </DialogContent>
-          
+
         </Dialog>
         {/* <button
           onClick={() => {
@@ -427,7 +427,7 @@ const Sidebar: React.FC = () => {
     const isActive = item.type === 'file' && currentMeeting?.id === item.id;
     const isMeetingItem = item.id.includes('-') && !item.id.startsWith('intro-call');
     const isDisabled = isMeetingActive && isMeetingItem;
-    
+
     // Check if this item has a matching transcript snippet
     const matchingResult = isMeetingItem ? findMatchingSnippet(item.id) : null;
     const hasTranscriptMatch = !!matchingResult;
@@ -438,10 +438,10 @@ const Sidebar: React.FC = () => {
       <div key={item.id}>
         <div
           className={`flex items-center transition-all duration-150 group ${
-            item.type === 'folder' && depth === 0 
+            item.type === 'folder' && depth === 0
               ? 'p-3 text-lg font-semibold hover:bg-gray-100 h-10 mx-3 mt-3 rounded-lg cursor-pointer'
               : `px-3 py-2 my-0.5 rounded-md text-sm ${
-                  isActive ? 'bg-blue-50 text-blue-700 font-medium shadow-sm' : 
+                  isActive ? 'bg-blue-50 text-blue-700 font-medium shadow-sm' :
                   hasTranscriptMatch ? 'bg-yellow-50' : 'hover:bg-gray-50'
                 } ${
                   isDisabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
@@ -455,9 +455,9 @@ const Sidebar: React.FC = () => {
               if (isDisabled) {
                 return;
               }
-              
+
               setCurrentMeeting({ id: item.id, title: item.title });
-              const basePath = item.id.startsWith('intro-call') ? '/' : 
+              const basePath = item.id.startsWith('intro-call') ? '/' :
                 item.id.includes('-') ? '/meeting-details' : `/notes/${item.id}`;
               router.push(basePath);
             }
@@ -488,10 +488,10 @@ const Sidebar: React.FC = () => {
                 <div className="flex items-center">
                   {isMeetingItem ? (
                     <div className={`flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full mr-2 ${
-                      isDisabled ? 'bg-gray-100' : 
+                      isDisabled ? 'bg-gray-100' :
                       hasTranscriptMatch ? 'bg-yellow-100' : 'bg-blue-100'}`}>
                       <File className={`w-3.5 h-3.5 ${
-                        isDisabled ? 'text-gray-400' : 
+                        isDisabled ? 'text-gray-400' :
                         hasTranscriptMatch ? 'text-yellow-600' : 'text-blue-600'}`} />
                     </div>
                   ) : (
@@ -514,7 +514,7 @@ const Sidebar: React.FC = () => {
                   </button>
                 )}
               </div>
-              
+
               {/* Show transcript match snippet if available */}
               {hasTranscriptMatch && (
                 <div className="mt-1 ml-8 text-xs text-gray-500 bg-yellow-50 p-1.5 rounded border border-yellow-100 line-clamp-2">
@@ -548,18 +548,18 @@ const Sidebar: React.FC = () => {
         )}
       </button>
 
-      <div 
+      <div
         className={`h-screen bg-white border-r shadow-sm flex flex-col transition-all duration-300 ${
           isCollapsed ? 'w-16' : 'w-64'
         }`}
       >
         {/* Header with traffic light spacing */}
         <div className="flex-shrink-0 h-22 flex items-center border-b">
-        
+
           {/* Title container */}
-          
-          
-          
+
+
+
           <div className="flex-1">
             {!isCollapsed && (
               <div className="p-3">
@@ -567,7 +567,7 @@ const Sidebar: React.FC = () => {
                   <span>Meetily</span>
                 </span> */}
                 <Logo isCollapsed={isCollapsed} />
-                
+
                 <div className="relative mb-1">
               <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
                 <Search className="h-3.5 w-3.5 text-gray-400" />
@@ -588,7 +588,7 @@ const Sidebar: React.FC = () => {
                 </button>
               )}
             </div>
-           
+
             </div>
             )}
           </div>
@@ -599,7 +599,7 @@ const Sidebar: React.FC = () => {
           {/* Fixed navigation items */}
           <div className="flex-shrink-0">
             {!isCollapsed && (
-              <div 
+              <div
                 onClick={() => router.push('/')}
                 className="p-3  text-lg font-semibold items-center hover:bg-gray-100 h-10   flex mx-3 mt-3 rounded-lg cursor-pointer"
               >
@@ -608,7 +608,7 @@ const Sidebar: React.FC = () => {
               </div>
             )}
           </div>
-          
+
           {/* Content area */}
           <div className="flex-1 flex flex-col min-h-0">
             {renderCollapsedIcons()}
@@ -638,7 +638,7 @@ const Sidebar: React.FC = () => {
                 ))}
               </div>
             )}
-            
+
             {/* Scrollable meeting items */}
             {!isCollapsed && (
               <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
@@ -656,7 +656,7 @@ const Sidebar: React.FC = () => {
 
         {/* Footer */}
         {!isCollapsed && (
-          
+
           <div className="flex-shrink-0 p-2 border-t border-gray-100">
             <button
                 onClick={handleRecordingToggle}
@@ -675,7 +675,7 @@ const Sidebar: React.FC = () => {
                   </>
                 )}
               </button>
-        
+
               <Dialog>
                 <DialogTrigger asChild>
                   <button
@@ -691,19 +691,13 @@ const Sidebar: React.FC = () => {
                     <DialogTitle>Settings</DialogTitle>
                   </VisuallyHidden>
                   <SettingTabs
-                    modelConfig={modelConfig}
-                    setModelConfig={setModelConfig}
-                    onSave={handleSaveModelConfig}
-                    transcriptModelConfig={transcriptModelConfig}
-                    setTranscriptModelConfig={setTranscriptModelConfig}
-                    onSaveTranscript={handleSaveTranscriptConfig}
                     setSaveSuccess={setSettingsSaveSuccess}
                   />
                   <DialogFooter>
                     {settingsSaveSuccess !== null && (
-                      <MessageToast 
-                        message={settingsSaveSuccess ? 'Settings saved successfully' : 'Failed to save settings'} 
-                        type={settingsSaveSuccess ? 'success' : 'error'} 
+                      <MessageToast
+                        message={settingsSaveSuccess ? 'Settings saved successfully' : 'Failed to save settings'}
+                        type={settingsSaveSuccess ? 'success' : 'error'}
                         show={settingsSaveSuccess !== null}
                         setShow={() => setSettingsSaveSuccess(null)}
                       />
@@ -729,7 +723,7 @@ const Sidebar: React.FC = () => {
         onCancel={() => setDeleteModalState({ isOpen: false, itemId: null })}
       />
 
-      
+
     </div>
   );
 };

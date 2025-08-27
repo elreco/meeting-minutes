@@ -4,8 +4,10 @@ import Sidebar from '@/components/Sidebar'
 import { SidebarProvider } from '@/components/Sidebar/SidebarProvider'
 import MainContent from '@/components/MainContent'
 import AnalyticsProvider from '@/components/AnalyticsProvider'
+import { AuthProvider } from '@/contexts/AuthContext'
+import { AuthGuard } from '@/components/AuthGuard'
 
-const sourceSans3 = Source_Sans_3({ 
+const sourceSans3 = Source_Sans_3({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700'],
   variable: '--font-source-sans-3',
@@ -21,15 +23,19 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${sourceSans3.variable} font-sans`}>
-        <AnalyticsProvider>
-          <SidebarProvider>
-            <div className="titlebar h-8 w-full fixed top-0 left-0 bg-transparent" />
-            <div className="flex">
-              <Sidebar />
-              <MainContent>{children}</MainContent>
-            </div>
-          </SidebarProvider>
-        </AnalyticsProvider>
+        <AuthProvider>
+          <AuthGuard>
+            <AnalyticsProvider>
+              <SidebarProvider>
+                <div className="titlebar h-8 w-full fixed top-0 left-0 bg-transparent" />
+                <div className="flex">
+                  <Sidebar />
+                  <MainContent>{children}</MainContent>
+                </div>
+              </SidebarProvider>
+            </AnalyticsProvider>
+          </AuthGuard>
+        </AuthProvider>
       </body>
     </html>
   )

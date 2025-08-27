@@ -33,13 +33,13 @@ db = DatabaseManager()
 
 class Block(BaseModel):
     """Represents a block of content in a section.
-    
+
     Block types must align with frontend rendering capabilities:
     - 'text': Plain text content
     - 'bullet': Bulleted list item
     - 'heading1': Large section heading
     - 'heading2': Medium section heading
-    
+
     Colors currently supported:
     - 'gray': Gray text color
     - '' or any other value: Default text color
@@ -111,7 +111,8 @@ class TranscriptProcessor:
         try:
             # Select and initialize the AI model and agent
             if model == "claude":
-                api_key = await db.get_api_key("claude")
+                from auth import get_anthropic_api_key
+                api_key = get_anthropic_api_key()
                 if not api_key: raise ValueError("ANTHROPIC_API_KEY environment variable not set")
                 llm = AnthropicModel(model_name, provider=AnthropicProvider(api_key=api_key))
                 logger.info(f"Using Claude model: {model_name}")
@@ -178,7 +179,7 @@ class TranscriptProcessor:
                             - Use 'bullet' for list items
                             - Use 'heading1' for major headings
                             - Use 'heading2' for subheadings
-                            
+
                             For the color field, use 'gray' for less important content or '' (empty string) for default.
 
                             Transcript Chunk:
@@ -187,7 +188,7 @@ class TranscriptProcessor:
                         ---
 
                         Please capture all relevant action items. Transcription can have spelling mistakes. correct it if required. context is important.
-                        
+
                         While generating the summary, please add the following context:
                         ---
                         {custom_prompt}
@@ -198,14 +199,14 @@ class TranscriptProcessor:
                     else:
                         logger.info(f"Using Ollama model: {model_name} and chunk size: {chunk_size} with overlap: {overlap}")
                         response = await self.chat_ollama_model(model_name, chunk, custom_prompt)
-                        
+
                         # Check if response is already a SummaryResponse object or a string that needs validation
                         if isinstance(response, SummaryResponse):
                             summary_result = response
                         else:
                             # If it's a string (JSON), validate it
                             summary_result = SummaryResponse.model_validate_json(response)
-                            
+
                         logger.info(f"Summary result for chunk {i+1}: {summary_result}")
                         logger.info(f"Summary result type for chunk {i+1}: {type(summary_result)}")
 
@@ -231,7 +232,7 @@ class TranscriptProcessor:
         except Exception as e:
             logger.error(f"Error during transcript processing: {str(e)}", exc_info=True)
             raise
-    
+
     async def chat_ollama_model(self, model_name: str, transcript: str, custom_prompt: str):
         message = {
         'role': 'system',
@@ -243,14 +244,14 @@ class TranscriptProcessor:
             {transcript}
             ---
         Please capture all relevant action items. Transcription can have spelling mistakes. correct it if required. context is important.
-        
+
         While generating the summary, please add the following context:
         ---
         {custom_prompt}
         ---
 
         Make sure the output is only the JSON data.
-    
+
         ''',
         }
 
@@ -258,16 +259,16 @@ class TranscriptProcessor:
         ollama_host = os.getenv('OLLAMA_HOST', 'http://127.0.0.1:11434')
         client = AsyncClient(host=ollama_host)
         self.active_clients.append(client)
-        
+
         try:
             response = await client.chat(model=model_name, messages=[message], stream=True, format=SummaryResponse.model_json_schema())
-            
+
             full_response = ""
             async for part in response:
                 content = part['message']['content']
                 print(content, end='', flush=True)
                 full_response += content
-            
+
             try:
                 summary = SummaryResponse.model_validate_json(full_response)
                 print("\n", summary.model_dump_json(indent=2), type(summary))
@@ -294,7 +295,7 @@ class TranscriptProcessor:
             if hasattr(self, 'db') and self.db is not None:
                 # self.db.close()
                 logger.info("Database connection cleanup (using context managers)")
-                
+
             # Cancel any active Ollama client sessions
             if hasattr(self, 'active_clients') and self.active_clients:
                 logger.info(f"Terminating {len(self.active_clients)} active Ollama client sessions")
@@ -311,4 +312,3 @@ class TranscriptProcessor:
         except Exception as e:
             logger.error(f"Error during TranscriptProcessor cleanup: {str(e)}", exc_info=True)
 
-        

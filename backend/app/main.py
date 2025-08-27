@@ -1,12 +1,13 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import uvicorn
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import logging
 from dotenv import load_dotenv
 from db import DatabaseManager
+from auth import get_current_user, get_anthropic_api_key
 import json
 from threading import Lock
 from transcript_processor import TranscriptProcessor
@@ -95,8 +96,6 @@ class SaveTranscriptConfigRequest(BaseModel):
 class TranscriptRequest(BaseModel):
     """Request model for transcript text, updated with meeting_id"""
     text: str
-    model: str
-    model_name: str
     meeting_id: str
     chunk_size: Optional[int] = 5000
     overlap: Optional[int] = 1000
@@ -165,7 +164,7 @@ processor = SummaryProcessor()
 
 # New meeting management endpoints
 @app.get("/get-meetings", response_model=List[MeetingResponse])
-async def get_meetings():
+async def get_meetings(current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get all meetings with their basic information"""
     try:
         meetings = await db.get_all_meetings()
@@ -175,7 +174,7 @@ async def get_meetings():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/get-meeting/{meeting_id}", response_model=MeetingDetailsResponse)
-async def get_meeting(meeting_id: str):
+async def get_meeting(meeting_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
     """Get a specific meeting by ID with all its details"""
     try:
         meeting = await db.get_meeting(meeting_id)
@@ -215,22 +214,19 @@ async def process_transcript_background(process_id: str, transcript: TranscriptR
     """Background task to process transcript"""
     try:
         logger.info(f"Starting background processing for process_id: {process_id}")
-        
+
         # Early validation for common issues
         if not transcript.text or not transcript.text.strip():
             raise ValueError("Empty transcript text provided")
-        
-        if transcript.model in ["claude", "groq", "openai"]:
-            # Check if API key is available for cloud providers
-            api_key = await processor.db.get_api_key(transcript.model)
-            if not api_key:
-                provider_names = {"claude": "Anthropic", "groq": "Groq", "openai": "OpenAI"}
-                raise ValueError(f"{provider_names.get(transcript.model, transcript.model)} API key not configured. Please set your API key in the model settings.")
+
+        # Use hardcoded Claude Sonnet 4 model
+        model = "claude"
+        model_name = "claude-3-5-sonnet-20241022"
 
         _, all_json_data = await processor.process_transcript(
             text=transcript.text,
-            model=transcript.model,
-            model_name=transcript.model_name,
+            model=model,
+            model_name=model_name,
             chunk_size=transcript.chunk_size,
             overlap=transcript.overlap,
             custom_prompt=custom_prompt
@@ -280,7 +276,7 @@ async def process_transcript_background(process_id: str, transcript: TranscriptR
                                     section["blocks"].extend(json_dict[key]["blocks"])
                                     section_exists = True
                                     break
-                            
+
                             if not section_exists:
                                 final_summary["MeetingNotes"]["sections"].append({
                                     "title": json_dict[key]["title"],
@@ -324,7 +320,8 @@ async def process_transcript_background(process_id: str, transcript: TranscriptR
 @app.post("/process-transcript")
 async def process_transcript_api(
     transcript: TranscriptRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Process a transcript text with background processing"""
     try:
@@ -335,8 +332,8 @@ async def process_transcript_api(
         await processor.db.save_transcript(
             transcript.meeting_id,
             transcript.text,
-            transcript.model,
-            transcript.model_name,
+            "claude",
+            "claude-3-5-sonnet-20241022",
             transcript.chunk_size,
             transcript.overlap
         )
@@ -423,7 +420,7 @@ async def get_summary(meeting_id: str):
             for backend_key, frontend_key in section_mapping.items():
                 if backend_key in summary_data and isinstance(summary_data[backend_key], dict):
                     transformed_data[frontend_key] = summary_data[backend_key]
-            
+
             # Add meeting notes sections if available - PRESERVE ORDER AND HANDLE DUPLICATES
             if "MeetingNotes" in summary_data and isinstance(summary_data["MeetingNotes"], dict):
                 meeting_notes = summary_data["MeetingNotes"]
@@ -431,21 +428,21 @@ async def get_summary(meeting_id: str):
                     # Add section order array to maintain order
                     transformed_data["_section_order"] = []
                     used_keys = set()
-                    
+
                     for index, section in enumerate(meeting_notes["sections"]):
                         if isinstance(section, dict) and "title" in section and "blocks" in section:
                             # Ensure blocks is a list to prevent frontend errors
                             if not isinstance(section.get("blocks"), list):
                                 section["blocks"] = []
-                                
+
                             # Convert title to snake_case key
                             base_key = section["title"].lower().replace(" & ", "_").replace(" ", "_")
-                            
+
                             # Handle duplicate section names by adding index
                             key = base_key
                             if key in used_keys:
                                 key = f"{base_key}_{index}"
-                            
+
                             used_keys.add(key)
                             transformed_data[key] = section
                             # Only add to _section_order if the section was successfully added
@@ -534,57 +531,13 @@ async def save_transcript(request: SaveTranscriptRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/get-model-config")
-async def get_model_config():
-    """Get the current model configuration"""
-    model_config = await db.get_model_config()
-    if model_config:
-        api_key = await db.get_api_key(model_config["provider"])
-        if api_key != None:
-            model_config["apiKey"] = api_key
-    return model_config
-
-@app.post("/save-model-config")
-async def save_model_config(request: SaveModelConfigRequest):
-    """Save the model configuration"""
-    await db.save_model_config(request.provider, request.model, request.whisperModel)
-    if request.apiKey != None:
-        await db.save_api_key(request.apiKey, request.provider)
-    return {"status": "success", "message": "Model configuration saved successfully"}  
-
-@app.get("/get-transcript-config")
-async def get_transcript_config():
-    """Get the current transcript configuration"""
-    transcript_config = await db.get_transcript_config()
-    if transcript_config:
-        transcript_api_key = await db.get_transcript_api_key(transcript_config["provider"])
-        if transcript_api_key != None:
-            transcript_config["apiKey"] = transcript_api_key
-    return transcript_config
-
-@app.post("/save-transcript-config")
-async def save_transcript_config(request: SaveTranscriptConfigRequest):
-    """Save the transcript configuration"""
-    await db.save_transcript_config(request.provider, request.model)
-    if request.apiKey != None:
-        await db.save_transcript_api_key(request.apiKey, request.provider)
-    return {"status": "success", "message": "Transcript configuration saved successfully"}
-
-class GetApiKeyRequest(BaseModel):
-    provider: str
-
-@app.post("/get-api-key")
-async def get_api_key(request: GetApiKeyRequest):
-    try:
-        return await db.get_api_key(request.provider)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/get-transcript-api-key")
-async def get_transcript_api_key(request: GetApiKeyRequest):
-    try:
-        return await db.get_transcript_api_key(request.provider)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def get_model_config(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Get the current model configuration - hardcoded to Claude Sonnet 4"""
+    return {
+        "provider": "claude",
+        "model": "claude-3-5-sonnet-20241022",
+        "whisperModel": "large-v3"
+    }
 
 class MeetingSummaryUpdate(BaseModel):
     meeting_id: str
