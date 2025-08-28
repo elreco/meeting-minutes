@@ -40,10 +40,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(session)
       if (session?.user) {
         await loadUserData(session.user.id)
+        // Clear auto recording flag when user authenticates
+        if (typeof window !== 'undefined' && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+          sessionStorage.removeItem('autoStartRecording')
+        }
       } else {
         setUser(null)
         setOrganization(null)
         setLoading(false)
+        // Clear auto recording flag when user signs out
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('autoStartRecording')
+        }
       }
     })
 
@@ -109,7 +117,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    try {
+      await supabase.auth.signOut()
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('autoStartRecording')
+        window.location.href = '/'
+      }
+    } catch (error) {
+      console.error('Error signing out:', error)
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('autoStartRecording')
+        window.location.href = '/'
+      }
+    }
   }
 
   const value = {

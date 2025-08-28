@@ -72,13 +72,13 @@ export default function Home() {
   const { setCurrentMeeting, setMeetings, meetings, isMeetingActive, setIsMeetingActive, setIsRecording: setSidebarIsRecording , serverAddress} = useSidebar();
   const handleNavigation = useNavigation('', ''); // Initialize with empty values
   const router = useRouter();
-  
+
   // Ref for final buffer flush functionality
   const finalFlushRef = useRef<(() => void) | null>(null);
-  
+
   // Ref to avoid stale closure issues with transcripts
   const transcriptsRef = useRef<Transcript[]>(transcripts);
-  
+
   // Keep ref updated with current transcripts
   useEffect(() => {
     transcriptsRef.current = transcripts;
@@ -139,7 +139,7 @@ export default function Home() {
 
   useEffect(() => {
     setCurrentMeeting({ id: 'intro-call', title: meetingTitle });
-    
+
   }, [meetingTitle, setCurrentMeeting]);
 
   useEffect(() => {
@@ -147,7 +147,7 @@ export default function Home() {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const isCurrentlyRecording = await invoke('is_recording');
-        
+
         if (isCurrentlyRecording && !isRecording) {
           console.log('Recording is active in backend but not in UI, synchronizing state...');
           setIsRecordingState(true);
@@ -162,13 +162,13 @@ export default function Home() {
     };
 
     checkRecordingState();
-    
+
     // Set up a polling interval to periodically check recording state
     const interval = setInterval(checkRecordingState, 1000); // Check every 1 second
-    
+
     return () => clearInterval(interval);
   }, [isRecording, setIsMeetingActive]);
-  
+
 
 
   useEffect(() => {
@@ -186,7 +186,7 @@ export default function Home() {
       return () => clearInterval(interval);
     }
   }, [isRecording]);
-  
+
   // Update sidebar recording state when local recording state changes
   useEffect(() => {
     setSidebarIsRecording(isRecording);
@@ -201,7 +201,7 @@ export default function Home() {
 
     const processBufferedTranscripts = (forceFlush = false) => {
       const sortedTranscripts: Transcript[] = [];
-      
+
       // Process all available sequential transcripts
       let nextSequence = lastProcessedSequence + 1;
       while (transcriptBuffer.has(nextSequence)) {
@@ -219,7 +219,7 @@ export default function Home() {
       const staleTranscripts: Transcript[] = [];
       const recentTranscripts: Transcript[] = [];
       const forceFlushTranscripts: Transcript[] = [];
-      
+
       for (const [sequenceId, transcript] of transcriptBuffer.entries()) {
         if (forceFlush) {
           // Force flush mode: process ALL remaining transcripts regardless of timing
@@ -240,7 +240,7 @@ export default function Home() {
           }
         }
       }
-      
+
       // Sort both stale and recent transcripts by chunk_start_time, then by sequence_id
       const sortTranscripts = (transcripts: Transcript[]) => {
         return transcripts.sort((a, b) => {
@@ -255,28 +255,28 @@ export default function Home() {
       const sortedForceFlushTranscripts = sortTranscripts(forceFlushTranscripts);
 
       const allNewTranscripts = [...sortedTranscripts, ...sortedRecentTranscripts, ...sortedStaleTranscripts, ...sortedForceFlushTranscripts];
-      
+
       if (allNewTranscripts.length > 0) {
         setTranscripts(prev => {
           // Create a set of existing sequence_ids for deduplication
           const existingSequenceIds = new Set(prev.map(t => t.sequence_id).filter(id => id !== undefined));
-          
+
           // Filter out any new transcripts that already exist
-          const uniqueNewTranscripts = allNewTranscripts.filter(transcript => 
+          const uniqueNewTranscripts = allNewTranscripts.filter(transcript =>
             transcript.sequence_id !== undefined && !existingSequenceIds.has(transcript.sequence_id)
           );
-          
+
           // Only combine if we have unique new transcripts
           if (uniqueNewTranscripts.length === 0) {
             console.log('No unique transcripts to add - all were duplicates');
             return prev; // No new unique transcripts to add
           }
-          
+
           console.log(`Adding ${uniqueNewTranscripts.length} unique transcripts out of ${allNewTranscripts.length} received`);
-          
+
           // Merge with existing transcripts, maintaining chronological order
           const combined = [...prev, ...uniqueNewTranscripts];
-          
+
           // Sort by chunk_start_time first, then by sequence_id
           return combined.sort((a, b) => {
             const chunkTimeDiff = (a.chunk_start_time || 0) - (b.chunk_start_time || 0);
@@ -284,9 +284,9 @@ export default function Home() {
             return (a.sequence_id || 0) - (b.sequence_id || 0);
           });
         });
-        
+
         // Log the processing summary
-        const logMessage = forceFlush 
+        const logMessage = forceFlush
           ? `Force flush processed ${allNewTranscripts.length} transcripts (${sortedTranscripts.length} sequential, ${forceFlushTranscripts.length} forced)`
           : `Processed ${allNewTranscripts.length} transcripts (${sortedTranscripts.length} sequential, ${recentTranscripts.length} recent, ${staleTranscripts.length} stale)`;
         console.log(logMessage);
@@ -309,7 +309,7 @@ export default function Home() {
             received_at: new Date(now).toISOString(),
             buffer_size_before: transcriptBuffer.size
           });
-          
+
           // Check for duplicate sequence_id before processing
           if (transcriptBuffer.has(event.payload.sequence_id)) {
             console.log('🚫 MAIN LISTENER: Duplicate sequence_id, skipping buffer:', event.payload.sequence_id);
@@ -334,7 +334,7 @@ export default function Home() {
           if (processingTimer) {
             clearTimeout(processingTimer);
           }
-          
+
           // Process buffer after a short delay to allow for batching
           processingTimer = setTimeout(processBufferedTranscripts, 100);
         });
@@ -372,7 +372,7 @@ export default function Home() {
           console.log('Chunk drop warning received:', event.payload);
           setChunkDropMessage(event.payload);
           setShowChunkDropWarning(true);
-          
+
           // // Auto-dismiss after 8 seconds
           // setTimeout(() => {
           //   setShowChunkDropWarning(false);
@@ -443,7 +443,7 @@ export default function Home() {
       const { invoke } = await import('@tauri-apps/api/core');
       const randomTitle = `Meeting ${Math.random().toString(36).substring(2, 8)}`;
       setMeetingTitle(randomTitle);
-      
+
       // Only check if we're already recording, but don't try to stop it first
       const isCurrentlyRecording = await invoke('is_recording');
       if (isCurrentlyRecording) {
@@ -469,21 +469,31 @@ export default function Home() {
       Analytics.trackButtonClick('start_recording_error', 'home_page');
     }
   };
-  
+
   // Check for autoStartRecording flag and start recording automatically
   useEffect(() => {
     const checkAutoStartRecording = async () => {
       if (typeof window !== 'undefined') {
         const shouldAutoStart = sessionStorage.getItem('autoStartRecording');
+        const recordingSource = sessionStorage.getItem('autoStartRecordingSource') || 'unknown';
+
         if (shouldAutoStart === 'true' && !isRecording && !isMeetingActive) {
-          console.log('Auto-starting recording from navigation...');
+          console.log(`Auto-starting recording from ${recordingSource}...`);
           sessionStorage.removeItem('autoStartRecording'); // Clear the flag
-          await handleRecordingStart();
+          sessionStorage.removeItem('autoStartRecordingSource'); // Clear the source flag
+
+          // Add small delay to ensure everything is properly initialized
+          setTimeout(async () => {
+            await handleRecordingStart();
+          }, 500);
         }
       }
     };
-    
-    checkAutoStartRecording();
+
+    // Only check if page is fully loaded
+    if (typeof window !== 'undefined') {
+      checkAutoStartRecording();
+    }
   }, [isRecording, isMeetingActive]);
 
   const handleRecordingStop = async () => {
@@ -491,15 +501,15 @@ export default function Home() {
       console.log('Stopping recording...');
       const { invoke } = await import('@tauri-apps/api/core');
       const { appDataDir } = await import('@tauri-apps/api/path');
-      
+
       const dataDir = await appDataDir();
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const transcriptPath = `${dataDir}transcript-${timestamp}.txt`;
       const audioPath = `${dataDir}recording-${timestamp}.wav`;
 
       // Stop recording and save audio
-      await invoke('stop_recording', { 
-        args: { 
+      await invoke('stop_recording', {
+        args: {
           save_path: audioPath,
           model_config: modelConfig
         }
@@ -514,14 +524,14 @@ export default function Home() {
 
       // const documentContent = `Meeting Title: ${meetingTitle}\nDate: ${new Date().toLocaleString()}\n\nTranscript:\n${formattedTranscript}`;
 
-      // await invoke('save_transcript', { 
+      // await invoke('save_transcript', {
       //   filePath: transcriptPath,
       //   content: documentContent
       // });
       // console.log('Transcript saved to:', transcriptPath);
 
       setIsRecordingState(false);
-      
+
       // Show summary button if we have transcript content
       if (formattedTranscript.trim()) {
         setShowSummary(true);
@@ -553,64 +563,64 @@ export default function Home() {
       const { invoke } = await import('@tauri-apps/api/core');
       const { appDataDir } = await import('@tauri-apps/api/path');
       const { listen } = await import('@tauri-apps/api/event');
-      
+
       const dataDir = await appDataDir();
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const transcriptPath = `${dataDir}transcript-${timestamp}.txt`;
       const audioPath = `${dataDir}recording-${timestamp}.wav`;
-      
+
       // Stop recording and get audio path
-      await invoke('stop_recording', { 
-        args: { 
+      await invoke('stop_recording', {
+        args: {
           model_config: modelConfig,
           save_path: audioPath
         }
       });
       console.log('Recording stopped successfully');
-      
+
       // Wait for transcription to complete
       setSummaryStatus('processing');
       console.log('Waiting for transcription to complete...');
-      
+
       const MAX_WAIT_TIME = 60000; // 60 seconds maximum wait (increased for longer processing)
       const POLL_INTERVAL = 500; // Check every 500ms
       let elapsedTime = 0;
       let transcriptionComplete = false;
-      
+
       // Listen for transcription-complete event
       const unlistenComplete = await listen('transcription-complete', () => {
         console.log('Received transcription-complete event');
         transcriptionComplete = true;
       });
-      
+
       // Removed LATE transcript listener - relying on main buffered transcript system instead
-      
+
       // Poll for transcription status
       while (elapsedTime < MAX_WAIT_TIME && !transcriptionComplete) {
         try {
           const status = await invoke<{chunks_in_queue: number, is_processing: boolean, last_activity_ms: number}>('get_transcription_status');
           console.log('Transcription status:', status);
-          
+
           // Check if transcription is complete
           if (!status.is_processing && status.chunks_in_queue === 0) {
             console.log('Transcription complete - no active processing and no chunks in queue');
             transcriptionComplete = true;
             break;
           }
-          
+
           // If no activity for more than 8 seconds and no chunks in queue, consider it done (increased from 5s to 8s)
           if (status.last_activity_ms > 8000 && status.chunks_in_queue === 0) {
             console.log('Transcription likely complete - no recent activity and empty queue');
             transcriptionComplete = true;
             break;
           }
-          
+
           // Update user with current status
           if (status.chunks_in_queue > 0) {
             console.log(`Processing ${status.chunks_in_queue} remaining audio chunks...`);
             setSummaryStatus('processing');
           }
-          
+
           // Wait before next check
           await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
           elapsedTime += POLL_INTERVAL;
@@ -619,11 +629,11 @@ export default function Home() {
           break;
         }
       }
-      
+
       // Clean up listener
       console.log('🧹 CLEANUP: Cleaning up transcription-complete listener');
       unlistenComplete();
-      
+
       if (!transcriptionComplete && elapsedTime >= MAX_WAIT_TIME) {
         console.warn('⏰ Transcription wait timeout reached after', elapsedTime, 'ms');
       } else {
@@ -632,9 +642,9 @@ export default function Home() {
         console.log('⏳ Waiting for late transcript segments...');
         await new Promise(resolve => setTimeout(resolve, 4000));
       }
-      
+
       // LATE transcript listener removed - no cleanup needed
-      
+
       // Final buffer flush: process ALL remaining transcripts regardless of timing
       const flushStartTime = Date.now();
       console.log('🔄 Final buffer flush: forcing processing of any remaining transcripts...', {
@@ -653,7 +663,7 @@ export default function Home() {
       } else {
         console.log('⚠️ Final flush function not available');
       }
-      
+
       setSummaryStatus('idle');
 
       // Wait a bit more to ensure all transcript state updates have been processed
@@ -668,24 +678,24 @@ export default function Home() {
 
         // Fix stale closure issue: Use ref to get fresh transcript state
         console.log('🔄 Solving stale closure - getting fresh transcript state at save time...');
-        
+
         // // Force final buffer flush to capture any remaining transcripts
         // if (finalFlushRef.current) {
         //   finalFlushRef.current();
         // }
-        
+
         // // Wait a moment for any final state updates to propagate
         // await new Promise(resolve => setTimeout(resolve, 300));
-        
+
         // Get fresh transcript state using ref (avoids stale closure)
         const freshTranscripts = [...transcriptsRef.current];
-        
+
         console.log('💾 Saving transcript to database with fresh state...', {
           fresh_transcript_count: freshTranscripts.length,
           sample_text: freshTranscripts.length > 0 ? freshTranscripts[0].text.substring(0, 50) + '...' : 'none',
           last_transcript: freshTranscripts.length > 0 ? freshTranscripts[freshTranscripts.length - 1].text.substring(0, 30) + '...' : 'none'
         });
-        
+
         const responseData = await invoke('api_save_transcript', {
           meetingTitle: meetingTitle,
           transcripts: freshTranscripts, // Use fresh state, not stale closure
@@ -696,14 +706,14 @@ export default function Home() {
           console.error('No meeting_id in response:', responseData);
           throw new Error('No meeting ID received from save operation');
         }
-        
+
         console.log('Successfully saved transcript with meeting ID:', meetingId);
         setMeetings([{ id: meetingId, title: meetingTitle }, ...meetings]);
-        
+
         // Wait a moment to ensure backend has fully processed the save
         console.log('Waiting for backend processing to complete...');
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
+
         // Set current meeting and navigate
         console.log('Setting current meeting and navigating to details page');
         setCurrentMeeting({ id: meetingId, title: meetingTitle });
@@ -735,17 +745,17 @@ export default function Home() {
       timestamp: update.timestamp,
       is_partial: update.is_partial
     });
-    
+
     const newTranscript = {
       id: update.sequence_id ? update.sequence_id.toString() : Date.now().toString(),
       text: update.text,
       timestamp: update.timestamp,
       sequence_id: update.sequence_id || 0,
     };
-    
+
     setTranscripts(prev => {
       console.log('📊 Current transcripts count before update:', prev.length);
-      
+
       // Check if this transcript already exists
       const exists = prev.some(
         t => t.text === update.text && t.timestamp === update.timestamp
@@ -754,18 +764,18 @@ export default function Home() {
         console.log('🚫 Duplicate transcript detected, skipping:', update.text.substring(0, 30) + '...');
         return prev;
       }
-      
+
       // Add new transcript and sort by sequence_id to maintain order
       const updated = [...prev, newTranscript];
       const sorted = updated.sort((a, b) => (a.sequence_id || 0) - (b.sequence_id || 0));
-      
+
       console.log('✅ Added new transcript. New count:', sorted.length);
       console.log('📝 Latest transcript:', {
         id: newTranscript.id,
         text: newTranscript.text.substring(0, 30) + '...',
         sequence_id: newTranscript.sequence_id
       });
-      
+
       return sorted;
     });
   };
@@ -779,12 +789,12 @@ export default function Home() {
       if (!fullTranscript.trim()) {
         throw new Error('No transcript text available. Please add some text first.');
       }
-      
+
       // Store the original transcript for regeneration
       setOriginalTranscript(fullTranscript);
-      
+
       console.log('Generating summary for transcript length:', fullTranscript.length);
-      
+
       // Process transcript and get process_id
       console.log('Processing transcript...');
       const result = await invoke('api_process_transcript', {
@@ -798,7 +808,7 @@ export default function Home() {
 
       const process_id = result.process_id;
       console.log('Process ID:', process_id);
-   
+
 
       // Poll for summary status
       const pollInterval = setInterval(async () => {
@@ -817,10 +827,10 @@ export default function Home() {
 
           if (result.status === 'completed' && result.data) {
             clearInterval(pollInterval);
-            
+
             // Remove MeetingName from data before formatting
             const { MeetingName, ...summaryData } = result.data;
-            
+
             // Update meeting title if available
             if (MeetingName) {
               setMeetingTitle(MeetingName);
@@ -857,7 +867,7 @@ export default function Home() {
 
       // Cleanup interval on component unmount
       return () => clearInterval(pollInterval);
-      
+
     } catch (error) {
       console.error('Failed to generate summary:', error);
       if (error instanceof Error) {
@@ -914,10 +924,10 @@ export default function Home() {
       // Generate filename
       const sanitizedTitle = meetingTitle.replace(/[^a-zA-Z0-9]/g, '_');
       const filename = `${sanitizedTitle}_transcript.json`;
-      
+
       // Get download directory path
       const downloadPath = await downloadDir();
-      
+
       // Write file to downloads directory
       await writeTextFile(`${downloadPath}/${filename}`, JSON.stringify(transcriptData, null, 2));
 
@@ -936,7 +946,7 @@ export default function Home() {
     try {
       const text = await file.text();
       const data = JSON.parse(text);
-      
+
       // Validate the uploaded file structure
       if (!data.transcripts || !Array.isArray(data.transcripts)) {
         throw new Error('Invalid transcript file format');
@@ -945,7 +955,7 @@ export default function Home() {
       // Update state with uploaded data
       setMeetingTitle(data.title || 'Uploaded Transcript');
       setTranscripts(data.transcripts);
-      
+
       // Generate summary for the uploaded transcript
       handleSummary(data.transcripts);
     } catch (error) {
@@ -965,7 +975,7 @@ export default function Home() {
 
     try {
       console.log('Regenerating summary with original transcript...');
-      
+
       // Process transcript and get process_id
       console.log('Processing transcript...');
       const result = await invoke('api_process_transcript', {
@@ -996,10 +1006,10 @@ export default function Home() {
 
           if (result.status === 'completed' && result.data) {
             clearInterval(pollInterval);
-            
+
             // Remove MeetingName from data before formatting
             const { MeetingName, ...summaryData } = result.data;
-            
+
             // Update meeting title if available
             if (MeetingName) {
               setMeetingTitle(MeetingName);
@@ -1063,7 +1073,7 @@ export default function Home() {
       console.log('No transcripts available for summary');
       return;
     }
-    
+
     try {
       await generateAISummary(customPrompt);
     } catch (error) {
@@ -1244,7 +1254,7 @@ export default function Home() {
           <div className="flex-1 overflow-y-auto pb-32">
             <TranscriptView transcripts={transcripts} />
           </div>
-          
+
           {/* Custom prompt input at bottom of transcript section */}
           {/* {!isRecording && transcripts.length > 0 && !isMeetingActive && (
             <div className="p-4 border-t border-gray-200">
@@ -1352,7 +1362,7 @@ export default function Home() {
                       )}
                       <div className="grid gap-4 max-h-[400px] overflow-y-auto pr-2">
                         {models.map((model) => (
-                          <div 
+                          <div
                             key={model.id}
                             className={`bg-white p-4 rounded-lg shadow cursor-pointer transition-colors ${
                               modelConfig.model === model.name ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-50'
@@ -1450,9 +1460,9 @@ export default function Home() {
                 </div>
               )}
               <div className="flex-1 overflow-y-auto p-4">
-                <AISummary 
-                  summary={aiSummary} 
-                  status={summaryStatus} 
+                <AISummary
+                  summary={aiSummary}
+                  status={summaryStatus}
                   error={summaryError}
                   onSummaryChange={(newSummary) => setAiSummary(newSummary)}
                   onRegenerateSummary={handleRegenerateSummary}

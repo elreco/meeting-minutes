@@ -46,7 +46,7 @@ interface SidebarContextType {
   serverAddress: string;
   transcriptServerAddress: string;
   setTranscriptServerAddress: (address: string) => void;
-  
+
 }
 
 const SidebarContext = createContext<SidebarContextType | null>(null);
@@ -100,11 +100,11 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const fetchSettings = async () => {
-        
+
         setServerAddress('http://localhost:5167');
         setTranscriptServerAddress('http://127.0.0.1:8178/stream');
-        
-      
+
+
     };
     fetchSettings();
   }, []);
@@ -120,7 +120,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     },
   ];
 
- 
+
 
   const toggleCollapse = () => {
     setIsCollapsed(!isCollapsed);
@@ -144,28 +144,29 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     if (!isRecording) {
       // If not recording, navigate to home page and set flag to start recording automatically
       sessionStorage.setItem('autoStartRecording', 'true');
+      sessionStorage.setItem('autoStartRecordingSource', 'sidebar');
       router.push('/');
-      
+
       // Track recording initiation from sidebar
       Analytics.trackButtonClick('start_recording', 'sidebar');
     }
     // The actual recording start/stop is handled in the Home component
   };
-  
+
   // Function to search through meeting transcripts
   const searchTranscripts = async (query: string) => {
     if (!query.trim()) {
       setSearchResults([]);
       return;
     }
-    
+
     try {
       setIsSearching(true);
-      
-      
+
+
       const results = await invoke('api_search_transcripts', { query }) as TranscriptSearchResult[];
       setSearchResults(results);
-      
+
       // Track search performed
       Analytics.trackSearchPerformed(query, results.length);
     } catch (error) {
@@ -176,18 +177,18 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
- 
+
 
   return (
-    <SidebarContext.Provider value={{ 
-      currentMeeting, 
-      setCurrentMeeting, 
-      sidebarItems, 
-      isCollapsed, 
-      toggleCollapse, 
-      meetings, 
-      setMeetings, 
-      isMeetingActive, 
+    <SidebarContext.Provider value={{
+      currentMeeting,
+      setCurrentMeeting,
+      sidebarItems,
+      isCollapsed,
+      toggleCollapse,
+      meetings,
+      setMeetings,
+      isMeetingActive,
       setIsMeetingActive,
       isRecording,
       setIsRecording,
@@ -199,7 +200,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
       serverAddress,
       transcriptServerAddress,
       setTranscriptServerAddress,
-      
+
     }}>
       {children}
     </SidebarContext.Provider>
