@@ -11,6 +11,7 @@ import { SettingTabs } from '../SettingTabs';
 import { TranscriptModelProps } from '@/components/TranscriptSettings';
 import Analytics from '@/lib/analytics';
 import { invoke } from '@tauri-apps/api/core';
+import { useAuth } from '@/contexts/AuthContext';
 
 import {
   Dialog,
@@ -34,6 +35,7 @@ interface SidebarItem {
 
 const Sidebar: React.FC = () => {
   const router = useRouter();
+  const { session } = useAuth();
   const {
     currentMeeting,
     setCurrentMeeting,
@@ -92,16 +94,22 @@ const Sidebar: React.FC = () => {
       whisperModel: 'large-v3',
     });
     const fetchModelConfig = async () => {
-      // Only make API call if serverAddress is loaded
+      // Only make API call if serverAddress is loaded and auth token is available
       if (!serverAddress) {
         console.log('Waiting for server address to load before fetching model config');
         return;
       }
 
-      try {
-        const data = await invoke('api_get_model_config') as any;
-        if (data && data.provider !== null) {
+      if (!session?.access_token) {
+        console.log('Waiting for authentication token to load model config');
+        return;
+      }
 
+      try {
+        const data = await invoke('api_get_model_config', {
+          authToken: session.access_token
+        }) as any;
+        if (data && data.provider !== null) {
           setModelConfig(data);
         }
       } catch (error) {
@@ -110,7 +118,7 @@ const Sidebar: React.FC = () => {
     };
 
     fetchModelConfig();
-  }, [serverAddress]);
+  }, [serverAddress, session?.access_token]);
 
 
   useEffect(() => {
@@ -119,14 +127,21 @@ const Sidebar: React.FC = () => {
       model: 'large-v3',
     });
     const fetchTranscriptSettings = async () => {
-      // Only make API call if serverAddress is loaded
+      // Only make API call if serverAddress is loaded and auth token is available
       if (!serverAddress) {
         console.log('Waiting for server address to load before fetching transcript settings');
         return;
       }
 
+      if (!session?.access_token) {
+        console.log('Waiting for authentication token to load transcript settings');
+        return;
+      }
+
       try {
-        const data = await invoke('api_get_transcript_config') as any;
+        const data = await invoke('api_get_transcript_config', {
+          authToken: session.access_token
+        }) as any;
         if (data && data.provider !== null) {
           setTranscriptModelConfig(data);
         }
@@ -135,7 +150,7 @@ const Sidebar: React.FC = () => {
       }
     };
     fetchTranscriptSettings();
-  }, [serverAddress]);
+  }, [serverAddress, session?.access_token]);
 
 
 

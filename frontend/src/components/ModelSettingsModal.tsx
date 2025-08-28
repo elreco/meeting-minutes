@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSidebar } from './Sidebar/SidebarProvider';
 import { invoke } from '@tauri-apps/api/core';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface ModelConfig {
   provider: 'ollama' | 'groq' | 'claude' | 'openai';
@@ -34,13 +35,20 @@ export function ModelSettingsModal({
   const [isApiKeyLocked, setIsApiKeyLocked] = useState<boolean>(true);
   const [isLockButtonVibrating, setIsLockButtonVibrating] = useState<boolean>(false);
   const { serverAddress } = useSidebar();
+  const { session } = useAuth();
   useEffect(() => {
     // if (showModelSettings) {
       const fetchModelConfig = async () => {
-        try {
-        const data = await invoke('api_get_model_config') as any;
-        if (data && data.provider !== null) {
+        if (!session?.access_token) {
+          console.log('Waiting for authentication token to load model config');
+          return;
+        }
 
+        try {
+        const data = await invoke('api_get_model_config', {
+          authToken: session.access_token
+        }) as any;
+        if (data && data.provider !== null) {
           setModelConfig(data);
         }
       } catch (error) {
@@ -50,7 +58,7 @@ export function ModelSettingsModal({
 
       fetchModelConfig();
     // }
-  }, []);
+  }, [session?.access_token]);
 
   const fetchApiKey = async (provider: string) => {
     try {
@@ -213,12 +221,12 @@ export function ModelSettingsModal({
                   placeholder="Enter your API key"
                 />
                 {isApiKeyLocked && (
-                  <div 
+                  <div
                     onClick={handleInputClick}
                     className="absolute inset-0 flex items-center justify-center bg-gray-100 bg-opacity-50 rounded-md cursor-not-allowed"
                   />
-                    
-                  
+
+
                 )}
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center space-x-2">
                   <button
@@ -270,7 +278,7 @@ export function ModelSettingsModal({
               )}
               <div className="grid gap-4 max-h-[400px] overflow-y-auto pr-2">
                 {models.map((model) => (
-                  <div 
+                  <div
                     key={model.id}
                     className={`bg-white p-4 rounded-lg shadow cursor-pointer transition-colors ${
                       modelConfig.model === model.name ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-50'
@@ -292,8 +300,8 @@ export function ModelSettingsModal({
             onClick={handleSave}
             disabled={isDoneDisabled}
             className={`px-4 py-2 text-sm font-medium text-white rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
-              isDoneDisabled 
-                ? 'bg-gray-400 cursor-not-allowed' 
+              isDoneDisabled
+                ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-blue-600 hover:bg-blue-700'
             }`}
           >
@@ -302,4 +310,4 @@ export function ModelSettingsModal({
         </div>
       </div>
   );
-} 
+}

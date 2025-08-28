@@ -9,6 +9,7 @@ import { CurrentMeeting, useSidebar } from '@/components/Sidebar/SidebarProvider
 import { ModelConfig } from '@/components/ModelSettingsModal';
 import { SettingTabs } from '@/components/SettingTabs';
 import {TranscriptModelProps } from '@/components/TranscriptSettings';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -53,6 +54,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
   const [meetings, setLocalMeetings] = useState<CurrentMeeting[]>([]);
   const [settingsSaveSuccess, setSettingsSaveSuccess] = useState<boolean | null>(null);
   const { setCurrentMeeting, setMeetings, meetings: sidebarMeetings , serverAddress} = useSidebar();
+  const { session } = useAuth();
 
   // Keep local meetings state in sync with sidebar meetings
   useEffect(() => {
@@ -73,8 +75,15 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
       whisperModel: 'large-v3'
     });
     const fetchModelConfig = async () => {
+      if (!session?.access_token) {
+        console.log('Waiting for authentication token to load model config');
+        return;
+      }
+
       try {
-        const data = await invokeTauri('api_get_model_config', {}) as any;
+        const data = await invokeTauri('api_get_model_config', {
+          authToken: session.access_token
+        }) as any;
         if (data && data.provider !== null) {
           setModelConfig(data);
         }
@@ -84,7 +93,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
     };
 
     fetchModelConfig();
-  }, [serverAddress]);
+  }, [serverAddress, session?.access_token]);
 
   useEffect(() => {
     console.log('Model config:', modelConfig);
@@ -98,14 +107,21 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
     });
 
     const fetchConfigurations = async () => {
-      // Only make API call if serverAddress is loaded
+      // Only make API call if serverAddress is loaded and auth token is available
       if (!serverAddress) {
         console.log('Waiting for server address to load before fetching configurations');
         return;
       }
 
+      if (!session?.access_token) {
+        console.log('Waiting for authentication token to load transcript config');
+        return;
+      }
+
       try {
-        const data = await invokeTauri('api_get_transcript_config', {}) as any;
+        const data = await invokeTauri('api_get_transcript_config', {
+          authToken: session.access_token
+        }) as any;
         if (data && data.provider !== null) {
           setTranscriptModelConfig(data);
         }
@@ -115,7 +131,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
     };
 
     fetchConfigurations();
-  }, [serverAddress]);
+  }, [serverAddress, session?.access_token]);
 
   // // Reset settings save success after showing toast
   // useEffect(() => {

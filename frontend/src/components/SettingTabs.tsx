@@ -1,6 +1,8 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { About } from "./About";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 interface SettingTabsProps {
     setSaveSuccess: (success: boolean | null) => void;
@@ -12,16 +14,28 @@ export function SettingTabs({
     defaultTab = "about"
 }: SettingTabsProps) {
     const { user, organization, signOut } = useAuth();
+    const router = useRouter();
+    const [isSigningOut, setIsSigningOut] = useState(false);
 
     const handleTabChange = () => {
         setSaveSuccess(null);
     };
 
     const handleSignOut = async () => {
+        if (isSigningOut) return; // Prevent multiple clicks
+
         try {
+            setIsSigningOut(true);
+            console.log('Initiating sign out from SettingTabs...');
             await signOut();
+            console.log('Sign out completed, redirecting to home...');
+            router.push('/');
         } catch (error) {
             console.error('Error signing out:', error);
+            // Even if there's an error, try to redirect
+            router.push('/');
+        } finally {
+            setIsSigningOut(false);
         }
     };
 
@@ -56,9 +70,14 @@ export function SettingTabs({
                     <div className="mt-6">
                         <button
                             onClick={handleSignOut}
-                            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+                            disabled={isSigningOut}
+                            className={`px-4 py-2 text-white rounded-md transition-colors ${
+                                isSigningOut
+                                    ? 'bg-red-400 cursor-not-allowed'
+                                    : 'bg-red-600 hover:bg-red-700'
+                            }`}
                         >
-                            Sign Out
+                            {isSigningOut ? 'Signing Out...' : 'Sign Out'}
                         </button>
                     </div>
                 </div>

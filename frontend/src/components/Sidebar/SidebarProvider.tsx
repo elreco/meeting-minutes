@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Analytics from '@/lib/analytics';
 import { invoke } from '@tauri-apps/api/core';
+import { useAuth } from '@/contexts/AuthContext';
 
 
 interface SidebarItem {
@@ -71,19 +72,23 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const [serverAddress, setServerAddress] = useState('');
   const [transcriptServerAddress, setTranscriptServerAddress] = useState('');
 
-
+  const { session } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
   useEffect(() => {
     const fetchMeetings = async () => {
-        if (serverAddress) {
+        if (serverAddress && session?.access_token) {
           try {
-        const meetings = await invoke('api_get_meetings') as Array<{id: string, title: string}>;
-        const transformedMeetings = meetings.map((meeting: any) => ({
-            id: meeting.id,
-            title: meeting.title
-        }));
+            console.log('Fetching meetings with auth token...');
+            const meetings = await invoke('api_get_meetings', {
+              authToken: session.access_token
+            }) as Array<{id: string, title: string}>;
+
+            const transformedMeetings = meetings.map((meeting: any) => ({
+                id: meeting.id,
+                title: meeting.title
+            }));
             setMeetings(transformedMeetings);
             router.push('/');
             Analytics.trackBackendConnection(true);
@@ -93,10 +98,12 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
             router.push('/');
             Analytics.trackBackendConnection(false, error instanceof Error ? error.message : 'Unknown error');
           }
+        } else if (serverAddress && !session?.access_token) {
+          console.log('Waiting for authentication token...');
         }
     }
     fetchMeetings();
-}, [serverAddress]);
+}, [serverAddress, session?.access_token]);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -153,7 +160,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     // The actual recording start/stop is handled in the Home component
   };
 
-  // Function to search through meeting transcripts
+    // Function to search through meeting transcripts
   const searchTranscripts = async (query: string) => {
     if (!query.trim()) {
       setSearchResults([]);
@@ -163,8 +170,16 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsSearching(true);
 
+      if (!session?.access_token) {
+        console.error('No authentication token available');
+        setSearchResults([]);
+        return;
+      }
 
-      const results = await invoke('api_search_transcripts', { query }) as TranscriptSearchResult[];
+      const results = await invoke('api_search_transcripts', {
+        query,
+        authToken: session.access_token
+      }) as TranscriptSearchResult[];
       setSearchResults(results);
 
       // Track search performed

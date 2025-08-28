@@ -23,14 +23,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // Safety timeout to prevent infinite loading
+    const loadingTimeout = setTimeout(() => {
+      console.warn('Auth loading timeout reached, forcing loading to false')
+      setLoading(false)
+    }, 10000) // 10 seconds timeout
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       if (session?.user) {
-        loadUserData(session.user.id)
+        loadUserData(session.user.id).finally(() => {
+          clearTimeout(loadingTimeout)
+        })
       } else {
         setLoading(false)
+        clearTimeout(loadingTimeout)
       }
+    }).catch((error) => {
+      console.error('Error getting initial session:', error)
+      setLoading(false)
+      clearTimeout(loadingTimeout)
     })
 
     // Listen for auth changes
@@ -39,10 +52,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session)
       if (session?.user) {
-        await loadUserData(session.user.id)
-        // Clear auto recording flag when user authenticates
-        if (typeof window !== 'undefined' && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
-          sessionStorage.removeItem('autoStartRecording')
+        try {
+          await loadUserData(session.user.id)
+          // Clear auto recording flag when user authenticates
+          if (typeof window !== 'undefined' && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+            sessionStorage.removeItem('autoStartRecording')
+          }
+        } catch (error) {
+          console.error('Error in auth state change:', error)
+          setLoading(false)
         }
       } else {
         setUser(null)
@@ -55,11 +73,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(loadingTimeout)
+    }
   }, [])
 
   const loadUserData = async (userId: string) => {
     try {
+      console.log('Loading user data for:', userId)
+
       // Load user profile
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
@@ -69,6 +92,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (profileError) {
         console.error('Error loading user profile:', profileError)
+        // If profile doesn't exist, we still set loading to false
+        setUser(null)
+        setOrganization(null)
         setLoading(false)
         return
       }
@@ -77,19 +103,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Load organization if user has one
       if (profile.organization_id) {
-        const { data: org, error: orgError } = await supabase
-          .from('organizations')
-          .select('*')
-          .eq('id', profile.organization_id)
-          .single()
+        try {
+          const { data: org, error: orgError } = await supabase
+            .from('organizations')
+            .select('*')
+            .eq('id', profile.organization_id)
+            .single()
 
-        if (!orgError) {
-          setOrganization(org)
+          if (orgError) {
+            console.error('Error loading organization:', orgError)
+            setOrganization(null)
+          } else {
+            setOrganization(org)
+          }
+        } catch (orgLoadError) {
+          console.error('Exception loading organization:', orgLoadError)
+          setOrganization(null)
         }
+      } else {
+        setOrganization(null)
       }
     } catch (error) {
       console.error('Error loading user data:', error)
+      setUser(null)
+      setOrganization(null)
     } finally {
+      console.log('User data loading completed, setting loading to false')
       setLoading(false)
     }
   }
@@ -118,16 +157,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      await supabase.auth.signOut()
+      console.log('Starting sign out process...')
+
+      // Clear local state first
+      setUser(null)
+      setOrganization(null)
+      setSession(null)
+
+      // Clear session storage
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('autoStartRecording')
-        window.location.href = '/'
+        sessionStorage.removeItem('autoStartRecordingSource')
       }
+
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.error('Supabase sign out error:', error)
+      } else {
+        console.log('Successfully signed out from Supabase')
+      }
+
+      console.log('Sign out completed')
     } catch (error) {
       console.error('Error signing out:', error)
+      // Even if there's an error, clear local state
+      setUser(null)
+      setOrganization(null)
+      setSession(null)
+
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('autoStartRecording')
-        window.location.href = '/'
+        sessionStorage.removeItem('autoStartRecordingSource')
       }
     }
   }
