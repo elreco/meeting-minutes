@@ -2,16 +2,30 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { About } from "./About";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, Dispatch, SetStateAction } from 'react';
+import { ModelConfig } from './ModelSettingsModal';
+import { TranscriptModelProps } from './TranscriptSettings';
 
 interface SettingTabsProps {
     setSaveSuccess: (success: boolean | null) => void;
     defaultTab?: string;
+    modelConfig?: ModelConfig;
+    setModelConfig?: Dispatch<SetStateAction<ModelConfig>>;
+    onSave?: (config: ModelConfig) => Promise<void>;
+    transcriptModelConfig?: TranscriptModelProps;
+    setTranscriptModelConfig?: Dispatch<SetStateAction<TranscriptModelProps>>;
+    onSaveTranscript?: (config?: TranscriptModelProps) => Promise<void>;
 }
 
 export function SettingTabs({
     setSaveSuccess,
-    defaultTab = "about"
+    defaultTab = "about",
+    modelConfig,
+    setModelConfig,
+    onSave,
+    transcriptModelConfig,
+    setTranscriptModelConfig,
+    onSaveTranscript
 }: SettingTabsProps) {
     const { user, organization, signOut } = useAuth();
     const router = useRouter();

@@ -10,12 +10,12 @@ import { Analytics } from '@/lib/analytics';
 export default function AnalyticsConsentSwitch() {
   const { setIsAnalyticsOptedIn, isAnalyticsOptedIn } = useContext(AnalyticsContext);
   const [isProcessing, setIsProcessing] = useState(false);
-  
+
   // Load saved preference on component mount
   useEffect(() => {
     const loadPreference = async () => {
       try {
-        const store = await load('analytics.json', { autoSave: false });
+        const store = await load('analytics.json', { autoSave: false, defaults: {} });
         const saved = await store.get<boolean>('analyticsOptedIn');
         if (saved !== null && saved !== undefined) {
           setIsAnalyticsOptedIn(saved);
@@ -31,19 +31,19 @@ export default function AnalyticsConsentSwitch() {
     // Optimistic update - immediately update UI state
     setIsAnalyticsOptedIn(enabled);
     setIsProcessing(true);
-    
+
     try {
-      const store = await load('analytics.json', { autoSave: false });
+      const store = await load('analytics.json', { autoSave: false, defaults: {} });
       await store.set('analyticsOptedIn', enabled);
       await store.save();
-      
+
       if (enabled) {
         // Full analytics initialization (same as AnalyticsProvider)
         const userId = await Analytics.getPersistentUserId();
-        
+
         // Initialize analytics
         await Analytics.init();
-        
+
         // Identify user with enhanced properties immediately after init
         await Analytics.identify(userId, {
           app_version: '0.0.5',
@@ -52,13 +52,13 @@ export default function AnalyticsConsentSwitch() {
           os: navigator.platform,
           user_agent: navigator.userAgent,
         });
-        
+
         // Start analytics session with the same user ID
         await Analytics.startSession(userId);
-        
+
         // Track app started (re-enabled)
         await Analytics.trackAppStarted();
-        
+
         console.log('Analytics re-enabled successfully');
       } else {
         await Analytics.disable();
@@ -116,7 +116,7 @@ export default function AnalyticsConsentSwitch() {
           <p className="mb-1">
             Your meetings, transcripts, and recordings remain completely private and local.
           </p>
-          <button 
+          <button
             onClick={handlePrivacyPolicyClick}
             className="text-blue-600 hover:text-blue-800 underline hover:no-underline"
           >

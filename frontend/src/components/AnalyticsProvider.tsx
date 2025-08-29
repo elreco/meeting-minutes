@@ -30,12 +30,12 @@ export default function AnalyticsProvider({ children }: AnalyticsProviderProps) 
     }
 
     const initAnalytics = async () => {
-      const store = await load('analytics.json', { autoSave: false });
+      const store = await load('analytics.json', { autoSave: false, defaults: {} });
       if (!(await store.has('analyticsOptedIn'))) {
         await store.set('analyticsOptedIn', true);
       }
       const analyticsOptedIn = await store.get('analyticsOptedIn')
-      
+
       setIsAnalyticsOptedIn(analyticsOptedIn as boolean);
       if (analyticsOptedIn && isAnalyticsOptedIn) {
         initAnalytics2();
@@ -43,16 +43,16 @@ export default function AnalyticsProvider({ children }: AnalyticsProviderProps) 
     }
 
     const initAnalytics2 = async () => {
-      
+
         // Mark as initialized to prevent duplicates
         initialized.current = true;
-        
+
         // Get persistent user ID FIRST (before initializing analytics)
         const userId = await Analytics.getPersistentUserId();
-        
+
         // Initialize analytics
         await Analytics.init();
-        
+
         // Identify user with enhanced properties immediately after init
         await Analytics.identify(userId, {
           app_version: '0.0.5',
@@ -61,36 +61,36 @@ export default function AnalyticsProvider({ children }: AnalyticsProviderProps) 
           os: navigator.platform,
           user_agent: navigator.userAgent,
         });
-        
+
         // Start analytics session with the same user ID
         await Analytics.startSession(userId);
-        
+
         // Check and track first launch (after analytics is initialized)
         await Analytics.checkAndTrackFirstLaunch();
-        
+
         // Track app started
         await Analytics.trackAppStarted();
-        
+
         // Check and track daily usage
         await Analytics.checkAndTrackDailyUsage();
-        
+
         // Set up cleanup on page unload
         const handleBeforeUnload = () => {
           Analytics.cleanup();
         };
-        
+
         window.addEventListener('beforeunload', handleBeforeUnload);
-        
+
         // Cleanup function
         return () => {
           window.removeEventListener('beforeunload', handleBeforeUnload);
           Analytics.cleanup();
         };
-      
+
     };
 
     initAnalytics().catch(console.error);
   }, [isAnalyticsOptedIn]);
 
   return <AnalyticsContext.Provider value={{ isAnalyticsOptedIn, setIsAnalyticsOptedIn }}>{children}</AnalyticsContext.Provider>;
-} 
+}
