@@ -6,6 +6,8 @@ import PageContent from "./page-content";
 import { useRouter } from "next/navigation";
 import Analytics from "@/lib/analytics";
 import { invoke } from "@tauri-apps/api/core";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 
 interface MeetingDetailsResponse {
   id: string;
@@ -24,6 +26,7 @@ const sampleSummary: Summary = {
 
 export default function MeetingDetails() {
   const { currentMeeting , serverAddress} = useSidebar();
+  const { session } = useAuth();
   const router = useRouter();
   const [meetingDetails, setMeetingDetails] = useState<MeetingDetailsResponse | null>(null);
   const [meetingSummary, setMeetingSummary] = useState<Summary|null>(null);
@@ -49,11 +52,74 @@ export default function MeetingDetails() {
 
     const fetchMeetingDetails = async () => {
       try {
-        const data = await invoke('api_get_meeting', {
-          meetingId: currentMeeting.id,
-        }) as any;
-        console.log('Meeting details:', data);
-        setMeetingDetails(data);
+        console.log('🔄 Fetching meeting details from Supabase...');
+
+        if (!session?.user?.id) {
+          setError("User not authenticated");
+          return;
+        }
+
+        // Query meeting using existing structure (meetings + transcripts)
+        const { data: meetingData, error: meetingError } = await supabase
+          .from('meetings')
+          .select(`
+            id,
+            title,
+            description,
+            status,
+            created_at,
+            updated_at,
+            transcripts(
+              id,
+              transcript,
+              timestamp,
+              summary,
+              action_items,
+              key_points,
+              created_at
+            )
+          `)
+          .eq('id', currentMeeting.id)
+          .eq('user_id', session.user.id)
+          .single();
+
+        if (meetingError) {
+          console.error('Supabase error fetching meeting:', meetingError);
+          setError("Failed to load meeting details");
+          return;
+        }
+
+        // Transform the data to match expected format
+        const transformedData = {
+          id: meetingData.id,
+          title: meetingData.title || 'Untitled Meeting',
+          created_at: meetingData.created_at,
+          updated_at: meetingData.updated_at,
+          transcripts: meetingData.transcripts?.length > 0 ?
+            // Parse the first transcript (there should typically be one per meeting)
+            meetingData.transcripts[0].transcript.split('\n')
+              .filter((line: string) => line.trim())
+              .map((line: string, index: number) => {
+                const timeMatch = line.match(/^\[(.+?)\] (.*)$/);
+                if (timeMatch) {
+                  return {
+                    id: `transcript-${index}`,
+                    text: timeMatch[2],
+                    timestamp: timeMatch[1],
+                    speaker: 'Speaker'
+                  };
+                }
+                return {
+                  id: `transcript-${index}`,
+                  text: line,
+                  timestamp: new Date().toISOString(),
+                  speaker: 'Speaker'
+                };
+              }) : []
+        };
+
+        console.log('✅ Successfully fetched meeting details from Supabase');
+        setMeetingDetails(transformedData);
       } catch (error) {
         console.error('Error fetching meeting details:', error);
         setError("Failed to load meeting details");
@@ -62,29 +128,82 @@ export default function MeetingDetails() {
 
     const fetchMeetingSummary = async () => {
       try {
-        const summary = await invoke('api_get_summary', {
-          meetingId: currentMeeting.id,
-        }) as any;
-        const summaryData = summary.data || {};
-        const { MeetingName, _section_order, ...restSummaryData } = summaryData;
-        
+        console.log('🔄 Fetching meeting summary from Supabase...');
+
+        if (!session?.user?.id) {
+          return;
+        }
+
+        // Get summary data from transcripts table (where summary is stored)
+        const { data: transcriptData, error } = await supabase
+          .from('transcripts')
+          .select('summary, action_items, key_points')
+          .eq('meeting_id', currentMeeting.id)
+          .single();
+
+        if (error) {
+          console.error('Error fetching summary:', error);
+          setMeetingSummary(sampleSummary);
+          return;
+        }
+
+        // Parse the summary data if it exists
+        let summaryData = {};
+        if (transcriptData?.summary) {
+          try {
+            summaryData = JSON.parse(transcriptData.summary);
+          } catch (e) {
+            // If not JSON, treat as plain text
+            summaryData = {
+              main_topics: { title: "Summary", blocks: [{ content: transcriptData.summary }] }
+            };
+          }
+        }
+
+        // Also add action_items and key_points if they exist
+        if (transcriptData?.action_items) {
+          try {
+            const actionItems = JSON.parse(transcriptData.action_items);
+            summaryData = { ...summaryData, action_items: actionItems };
+          } catch (e) {
+            summaryData = {
+              ...summaryData,
+              action_items: { title: "Action Items", blocks: [{ content: transcriptData.action_items }] }
+            };
+          }
+        }
+
+        if (transcriptData?.key_points) {
+          try {
+            const keyPoints = JSON.parse(transcriptData.key_points);
+            summaryData = { ...summaryData, key_points: keyPoints };
+          } catch (e) {
+            summaryData = {
+              ...summaryData,
+              key_points: { title: "Key Points", blocks: [{ content: transcriptData.key_points }] }
+            };
+          }
+        }
+
+        const { MeetingName, _section_order, ...restSummaryData } = summaryData as any;
+
         // Format the summary data with consistent styling - PRESERVE ORDER
         const formattedSummary: Summary = {};
-        
+
         // Use section order if available to maintain exact order and handle duplicates
         const sectionKeys = _section_order || Object.keys(restSummaryData);
-        
+
         for (const key of sectionKeys) {
           try {
             const section = restSummaryData[key];
             // Comprehensive null checks to prevent the error
-            if (section && 
-                typeof section === 'object' && 
-                'title' in section && 
+            if (section &&
+                typeof section === 'object' &&
+                'title' in section &&
                 'blocks' in section) {
-              
+
               const typedSection = section as { title?: string; blocks?: any[] };
-              
+
               // Ensure blocks is an array before mapping
               if (Array.isArray(typedSection.blocks)) {
                 formattedSummary[key] = {

@@ -17,6 +17,8 @@ import { useRouter } from 'next/navigation';
 import type { CurrentMeeting } from '@/components/Sidebar/SidebarProvider';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Analytics from '@/lib/analytics';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 
 
@@ -70,6 +72,7 @@ export default function Home() {
   const [isRecordingDisabled, setIsRecordingDisabled] = useState(false);
 
   const { setCurrentMeeting, setMeetings, meetings, isMeetingActive, setIsMeetingActive, setIsRecording: setSidebarIsRecording , serverAddress} = useSidebar();
+  const { session } = useAuth();
   const handleNavigation = useNavigation('', ''); // Initialize with empty values
   const router = useRouter();
 
@@ -673,52 +676,112 @@ export default function Home() {
       // Save to SQLite
       if (isCallApi && transcriptionComplete == true) {
 
+        // Prevent multiple saves
+        if (isSavingTranscript) {
+          console.log('Already saving transcript, skipping duplicate save request');
+          return;
+        }
+
         // await new Promise(resolve => setTimeout(resolve, 5000));
         setIsSavingTranscript(true);
 
-        // Fix stale closure issue: Use ref to get fresh transcript state
-        console.log('🔄 Solving stale closure - getting fresh transcript state at save time...');
+        try {
+          // Fix stale closure issue: Use ref to get fresh transcript state
+          console.log('🔄 Solving stale closure - getting fresh transcript state at save time...');
 
-        // // Force final buffer flush to capture any remaining transcripts
-        // if (finalFlushRef.current) {
-        //   finalFlushRef.current();
-        // }
+          // // Force final buffer flush to capture any remaining transcripts
+          // if (finalFlushRef.current) {
+          //   finalFlushRef.current();
+          // }
 
-        // // Wait a moment for any final state updates to propagate
-        // await new Promise(resolve => setTimeout(resolve, 300));
+          // // Wait a moment for any final state updates to propagate
+          // await new Promise(resolve => setTimeout(resolve, 300));
 
-        // Get fresh transcript state using ref (avoids stale closure)
-        const freshTranscripts = [...transcriptsRef.current];
+          // Get fresh transcript state using ref (avoids stale closure)
+          const freshTranscripts = [...transcriptsRef.current];
 
-        console.log('💾 Saving transcript to database with fresh state...', {
-          fresh_transcript_count: freshTranscripts.length,
-          sample_text: freshTranscripts.length > 0 ? freshTranscripts[0].text.substring(0, 50) + '...' : 'none',
-          last_transcript: freshTranscripts.length > 0 ? freshTranscripts[freshTranscripts.length - 1].text.substring(0, 30) + '...' : 'none'
-        });
+          console.log('💾 Saving transcript to database with fresh state...', {
+            fresh_transcript_count: freshTranscripts.length,
+            sample_text: freshTranscripts.length > 0 ? freshTranscripts[0].text.substring(0, 50) + '...' : 'none',
+            last_transcript: freshTranscripts.length > 0 ? freshTranscripts[freshTranscripts.length - 1].text.substring(0, 30) + '...' : 'none'
+          });
 
-        const responseData = await invoke('api_save_transcript', {
-          meetingTitle: meetingTitle,
-          transcripts: freshTranscripts, // Use fresh state, not stale closure
-        }) as any;
+          console.log('💾 Saving meeting using existing Supabase structure...');
 
-        const meetingId = responseData.meeting_id;
-        if (!meetingId) {
-          console.error('No meeting_id in response:', responseData);
-          throw new Error('No meeting ID received from save operation');
+          if (!session?.user?.id) {
+            throw new Error('No user session available for saving');
+          }
+
+          // Get user's organization_id from their profile
+          const { data: userProfile } = await supabase
+            .from('user_profiles')
+            .select('organization_id')
+            .eq('id', session.user.id)
+            .single();
+
+          if (!userProfile?.organization_id) {
+            throw new Error('User organization not found');
+          }
+
+          // Step 1: Create the meeting record
+          const { data: savedMeeting, error: meetingError } = await supabase
+            .from('meetings')
+            .insert({
+              organization_id: userProfile.organization_id,
+              user_id: session.user.id,
+              title: meetingTitle,
+              description: `Meeting recorded on ${new Date().toLocaleDateString()}`,
+              status: 'active'
+            })
+            .select('id, title')
+            .single();
+
+          if (meetingError) {
+            console.error('Error creating meeting:', meetingError);
+            throw new Error(`Failed to create meeting: ${meetingError.message}`);
+          }
+
+          // Step 2: Save transcripts if any exist
+          if (freshTranscripts.length > 0) {
+            const transcriptText = freshTranscripts
+              .map(t => `[${new Date(t.timestamp).toLocaleTimeString()}] ${t.text}`)
+              .join('\n');
+
+            const { error: transcriptError } = await supabase
+              .from('transcripts')
+              .insert({
+                meeting_id: savedMeeting.id,
+                organization_id: userProfile.organization_id,
+                transcript: transcriptText,
+                timestamp: new Date().toISOString()
+              });
+
+            if (transcriptError) {
+              console.error('Error saving transcript:', transcriptError);
+              // Don't fail the whole operation for transcript errors
+            }
+          }
+
+          console.log('✅ Successfully saved meeting to Supabase:', savedMeeting);
+
+          // Update local meetings list
+          setMeetings([{ id: savedMeeting.id, title: savedMeeting.title }, ...meetings]);
+
+          // Wait a moment to ensure backend has fully processed the save
+          console.log('Waiting for backend processing to complete...');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+
+          // Set current meeting and navigate
+          console.log('Setting current meeting and navigating to details page');
+          setCurrentMeeting({ id: savedMeeting.id, title: savedMeeting.title });
+          setIsMeetingActive(false);
+          router.push('/meeting-details');
+        } catch (error) {
+          console.error('Error saving transcript:', error);
+          throw error; // Re-throw to be handled by outer catch
+        } finally {
+          setIsSavingTranscript(false);
         }
-
-        console.log('Successfully saved transcript with meeting ID:', meetingId);
-        setMeetings([{ id: meetingId, title: meetingTitle }, ...meetings]);
-
-        // Wait a moment to ensure backend has fully processed the save
-        console.log('Waiting for backend processing to complete...');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        // Set current meeting and navigate
-        console.log('Setting current meeting and navigating to details page');
-        setCurrentMeeting({ id: meetingId, title: meetingTitle });
-        setIsMeetingActive(false);
-        router.push('/meeting-details');
       }
       setIsMeetingActive(false);
       setIsRecordingState(false);

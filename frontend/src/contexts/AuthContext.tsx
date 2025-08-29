@@ -20,53 +20,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [organization, setOrganization] = useState<Organization | null>(null)
   const [session, setSession] = useState<Session | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false) // Start with false - no blocking loader!
 
-  useEffect(() => {
-    // Safety timeout to prevent infinite loading
-    const loadingTimeout = setTimeout(() => {
-      console.warn('Auth loading timeout reached, forcing loading to false')
-      setLoading(false)
-    }, 10000) // 10 seconds timeout
+        useEffect(() => {
+    let isMounted = true
 
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      if (session?.user) {
-        loadUserData(session.user.id).finally(() => {
-          clearTimeout(loadingTimeout)
-        })
-      } else {
-        setLoading(false)
-        clearTimeout(loadingTimeout)
+    console.log('🚀 AuthContext: Starting initialization (no blocking loader)')
+
+    // Simple auth check - no complex timeouts
+    const initAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+
+        if (!isMounted) return
+
+        console.log('📱 Session check:', session ? '✅ Found' : '❌ None')
+        setSession(session)
+
+        if (session?.user) {
+          console.log('👤 Setting user from session')
+          setUser({
+            id: session.user.id,
+            email: session.user.email || '',
+            full_name: session.user.user_metadata?.full_name || undefined,
+            organization_id: session.user.user_metadata?.organization_id || undefined,
+            role: 'member'
+          })
+        } else {
+          setUser(null)
+        }
+      } catch (error) {
+        console.error('Auth error (continuing without auth):', error)
+        setUser(null)
+        setSession(null)
       }
-    }).catch((error) => {
-      console.error('Error getting initial session:', error)
-      setLoading(false)
-      clearTimeout(loadingTimeout)
-    })
+    }
+
+    initAuth()
 
     // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isMounted) return
+
+      console.log('🔄 Auth state changed:', event)
       setSession(session)
+
       if (session?.user) {
-        try {
-          await loadUserData(session.user.id)
-          // Clear auto recording flag when user authenticates
-          if (typeof window !== 'undefined' && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
-            sessionStorage.removeItem('autoStartRecording')
-          }
-        } catch (error) {
-          console.error('Error in auth state change:', error)
-          setLoading(false)
+        console.log('👤 User signed in via state change')
+        setUser({
+          id: session.user.id,
+          email: session.user.email || '',
+          full_name: session.user.user_metadata?.full_name || undefined,
+          organization_id: session.user.user_metadata?.organization_id || undefined,
+          role: 'member'
+        })
+        // Clear session flags on sign in
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('autoStartRecording')
         }
       } else {
+        console.log('❌ User signed out via state change')
         setUser(null)
         setOrganization(null)
-        setLoading(false)
-        // Clear auto recording flag when user signs out
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('autoStartRecording')
         }
@@ -74,64 +89,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
 
     return () => {
+      isMounted = false
       subscription.unsubscribe()
-      clearTimeout(loadingTimeout)
     }
   }, [])
 
-  const loadUserData = async (userId: string) => {
-    try {
-      console.log('Loading user data for:', userId)
-
-      // Load user profile
-      const { data: profile, error: profileError } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', userId)
-        .single()
-
-      if (profileError) {
-        console.error('Error loading user profile:', profileError)
-        // If profile doesn't exist, we still set loading to false
-        setUser(null)
-        setOrganization(null)
-        setLoading(false)
-        return
-      }
-
-      setUser(profile)
-
-      // Load organization if user has one
-      if (profile.organization_id) {
-        try {
-          const { data: org, error: orgError } = await supabase
-            .from('organizations')
-            .select('*')
-            .eq('id', profile.organization_id)
-            .single()
-
-          if (orgError) {
-            console.error('Error loading organization:', orgError)
-            setOrganization(null)
-          } else {
-            setOrganization(org)
-          }
-        } catch (orgLoadError) {
-          console.error('Exception loading organization:', orgLoadError)
-          setOrganization(null)
-        }
-      } else {
-        setOrganization(null)
-      }
-    } catch (error) {
-      console.error('Error loading user data:', error)
-      setUser(null)
-      setOrganization(null)
-    } finally {
-      console.log('User data loading completed, setting loading to false')
-      setLoading(false)
-    }
-  }
+      // Simplified - no longer needed since we use session data directly
+  // const loadUserData = async (userId: string) => {
+  //   // This function has been replaced with direct session data usage
+  //   // to avoid DB loading delays and potential infinite loading issues
+  // }
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({

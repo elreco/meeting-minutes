@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Analytics from '@/lib/analytics';
 import { invoke } from '@tauri-apps/api/core';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 
 interface SidebarItem {
@@ -76,34 +77,55 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  useEffect(() => {
-    const fetchMeetings = async () => {
-        if (serverAddress && session?.access_token) {
+    useEffect(() => {
+    const fetchMeetingsFromSupabase = async () => {
+        if (session?.user?.id) {
           try {
-            console.log('Fetching meetings with auth token...');
-            const meetings = await invoke('api_get_meetings', {
-              authToken: session.access_token
-            }) as Array<{id: string, title: string}>;
+            console.log('🔄 Fetching meetings from Supabase...');
 
-            const transformedMeetings = meetings.map((meeting: any) => ({
+            // Query meetings using existing structure (meetings + transcripts)
+            const { data: meetings, error } = await supabase
+              .from('meetings')
+              .select(`
+                id,
+                title,
+                description,
+                created_at,
+                organization_id,
+                transcripts(transcript, created_at)
+              `)
+              .eq('user_id', session.user.id)
+              .order('created_at', { ascending: false })
+              .limit(50);
+
+            if (error) {
+              console.error('Supabase error fetching meetings:', error);
+              setMeetings([]);
+              return;
+            }
+
+            console.log('✅ Successfully fetched meetings from Supabase:', meetings?.length || 0);
+
+            const transformedMeetings = (meetings || []).map((meeting: any) => ({
                 id: meeting.id,
-                title: meeting.title
+                title: meeting.title || 'Untitled Meeting'
             }));
+
             setMeetings(transformedMeetings);
-            router.push('/');
             Analytics.trackBackendConnection(true);
           } catch (error) {
-            console.error('Error fetching meetings:', error);
+            console.error('Error fetching meetings from Supabase:', error);
             setMeetings([]);
-            router.push('/');
             Analytics.trackBackendConnection(false, error instanceof Error ? error.message : 'Unknown error');
           }
-        } else if (serverAddress && !session?.access_token) {
-          console.log('Waiting for authentication token...');
+        } else {
+          console.log('⏳ Waiting for user session to fetch meetings...');
+          setMeetings([]);
         }
     }
-    fetchMeetings();
-}, [serverAddress, session?.access_token]);
+
+    fetchMeetingsFromSupabase();
+}, [session?.user?.id]);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -160,7 +182,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     // The actual recording start/stop is handled in the Home component
   };
 
-    // Function to search through meeting transcripts
+      // Function to search through meeting transcripts
   const searchTranscripts = async (query: string) => {
     if (!query.trim()) {
       setSearchResults([]);
@@ -170,20 +192,73 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsSearching(true);
 
-      if (!session?.access_token) {
-        console.error('No authentication token available');
+      if (!session?.user?.id) {
+        console.error('No user session available for search');
         setSearchResults([]);
         return;
       }
 
-      const results = await invoke('api_search_transcripts', {
-        query,
-        authToken: session.access_token
-      }) as TranscriptSearchResult[];
-      setSearchResults(results);
+      console.log('🔍 Searching transcripts in Supabase...');
+
+      // Search in meetings and transcripts using existing structure
+      const { data: results, error } = await supabase
+        .from('meetings')
+        .select(`
+          id,
+          title,
+          description,
+          created_at,
+          transcripts(transcript)
+        `)
+        .eq('user_id', session.user.id)
+        .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
+        .limit(10);
+
+      if (error) {
+        console.error('Supabase search error:', error);
+        setSearchResults([]);
+        return;
+      }
+
+      // Also search in transcripts content
+      const { data: transcriptResults } = await supabase
+        .from('transcripts')
+        .select(`
+          meeting_id,
+          transcript,
+          meetings(id, title, created_at)
+        `)
+        .textSearch('transcript', query)
+        .limit(10);
+
+      // Combine both results
+      const allResults = [
+        ...(results || []),
+        ...((transcriptResults || []).map((tr: any) => ({
+          ...tr.meetings,
+          transcripts: [{ transcript: tr.transcript }]
+        })))
+      ];
+
+      // Remove duplicates and transform
+      const uniqueResults = Array.from(
+        new Map(allResults.map(item => [item.id, item])).values()
+      );
+
+      const transformedResults = uniqueResults.map((meeting: any) => ({
+        id: meeting.id,
+        title: meeting.title || 'Untitled Meeting',
+        matchContext: meeting.transcripts?.[0]?.transcript ?
+          meeting.transcripts[0].transcript.substring(0, 150) + '...' :
+          meeting.description || 'No transcript available',
+        timestamp: meeting.created_at || new Date().toISOString()
+      }));
+
+      console.log('✅ Search completed:', transformedResults.length, 'results');
+      setSearchResults(transformedResults);
 
       // Track search performed
-      Analytics.trackSearchPerformed(query, results.length);
+      Analytics.trackSearchPerformed(query, transformedResults.length);
     } catch (error) {
       console.error('Error searching transcripts:', error);
       setSearchResults([]);

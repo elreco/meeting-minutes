@@ -12,6 +12,7 @@ import { TranscriptModelProps } from '@/components/TranscriptSettings';
 import Analytics from '@/lib/analytics';
 import { invoke } from '@tauri-apps/api/core';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 import {
   Dialog,
@@ -190,6 +191,7 @@ const Sidebar: React.FC = () => {
         provider: payload.provider,
         model: payload.model,
         apiKey: payload.apiKey,
+        authToken: session?.access_token
       });
 
 
@@ -286,17 +288,40 @@ const Sidebar: React.FC = () => {
 
 
   const handleDelete = async (itemId: string) => {
-    console.log('Deleting item:', itemId);
-    const payload = {
-      meetingId: itemId
-    };
+    console.log('Deleting meeting from Supabase:', itemId);
 
-    try{
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('api_delete_meeting', {
-        meetingId: itemId,
-      });
-      console.log('Meeting deleted successfully');
+    if (!session?.user?.id) {
+      console.error('No authenticated user for deletion');
+      return;
+    }
+
+    try {
+      // Delete from Supabase using existing structure
+      // First delete transcripts (child records)
+      const { error: transcriptError } = await supabase
+        .from('transcripts')
+        .delete()
+        .eq('meeting_id', itemId);
+
+      if (transcriptError) {
+        console.warn('Error deleting transcripts (might not exist):', transcriptError);
+      }
+
+      // Then delete the meeting (parent record)
+      const { error: meetingError } = await supabase
+        .from('meetings')
+        .delete()
+        .eq('id', itemId)
+        .eq('user_id', session.user.id); // Ensure user can only delete own meetings
+
+      if (meetingError) {
+        console.error('Error deleting meeting:', meetingError);
+        throw new Error(`Failed to delete meeting: ${meetingError.message}`);
+      }
+
+      console.log('✅ Meeting deleted successfully from Supabase');
+
+      // Update local state
       const updatedMeetings = meetings.filter((m: CurrentMeeting) => m.id !== itemId);
       setMeetings(updatedMeetings);
 
@@ -310,6 +335,7 @@ const Sidebar: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to delete meeting:', error);
+      // Optionally show user-friendly error message
     }
   };
 

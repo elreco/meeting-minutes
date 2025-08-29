@@ -763,6 +763,7 @@ export default function PageContent({ meeting, summaryData }: { meeting: any, su
         provider: payload.provider,
         model: payload.model,
         api_key: payload.apiKey,
+        authToken: session?.access_token
       });
 
 

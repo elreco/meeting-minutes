@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -14,9 +14,11 @@ interface AuthModalProps {
 }
 
 export function AuthModal({ isOpen, onClose }: AuthModalProps) {
-  const { signIn, signUp } = useAuth()
+  const { signIn, signUp, user, loading: authLoading } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [waitingForAuth, setWaitingForAuth] = useState(false)
+  const authTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Sign In Form
   const [signInEmail, setSignInEmail] = useState('')
@@ -28,20 +30,77 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [fullName, setFullName] = useState('')
   const [organizationName, setOrganizationName] = useState('')
 
+  // Auto-close modal when user is successfully authenticated
+  useEffect(() => {
+    if (waitingForAuth && user && !authLoading) {
+      console.log('User authenticated successfully, closing modal')
+
+      // Clear timeout since auth succeeded
+      if (authTimeoutRef.current) {
+        clearTimeout(authTimeoutRef.current)
+        authTimeoutRef.current = null
+      }
+
+      setLoading(false)
+      setWaitingForAuth(false)
+      onClose()
+    }
+  }, [user, authLoading, waitingForAuth, onClose])
+
+  // Reset loading state if auth loading finishes without user (error case)
+  useEffect(() => {
+    if (waitingForAuth && !authLoading && !user) {
+      console.log('Auth loading finished but no user, resetting loading state')
+
+      // Clear timeout
+      if (authTimeoutRef.current) {
+        clearTimeout(authTimeoutRef.current)
+        authTimeoutRef.current = null
+      }
+
+      setLoading(false)
+      setWaitingForAuth(false)
+    }
+  }, [authLoading, user, waitingForAuth])
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (authTimeoutRef.current) {
+        clearTimeout(authTimeoutRef.current)
+      }
+    }
+  }, [])
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    setWaitingForAuth(true)
+
+    // Clear any existing timeout
+    if (authTimeoutRef.current) {
+      clearTimeout(authTimeoutRef.current)
+    }
 
     const { error } = await signIn(signInEmail, signInPassword)
 
     if (error) {
       setError(error.message)
+      setLoading(false)
+      setWaitingForAuth(false)
     } else {
-      onClose()
-    }
+      console.log('Sign in request successful, waiting for user data to load...')
 
-    setLoading(false)
+      // Safety timeout in case auth never completes
+      authTimeoutRef.current = setTimeout(() => {
+        console.warn('Auth modal timeout reached, resetting state')
+        setLoading(false)
+        setWaitingForAuth(false)
+        setError('Authentication took too long. Please try again.')
+        authTimeoutRef.current = null
+      }, 8000) // 8 seconds timeout - much faster now
+    }
   }
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -98,7 +157,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               </div>
               {error && <p className="text-red-500 text-sm">{error}</p>}
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Signing In...' : 'Sign In'}
+                {loading ? (waitingForAuth ? 'Loading your data...' : 'Signing In...') : 'Sign In'}
               </Button>
             </form>
           </TabsContent>

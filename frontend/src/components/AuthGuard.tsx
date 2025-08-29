@@ -9,17 +9,13 @@ interface AuthGuardProps {
 }
 
 export function AuthGuard({ children }: AuthGuardProps) {
-  const { user, loading } = useAuth()
+  const { user } = useAuth() // Removed loading dependency completely
   const [showAuthModal, setShowAuthModal] = useState(false)
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900"></div>
-      </div>
-    )
-  }
+  // Debug logging
+  console.log('🔍 AuthGuard state:', { user: !!user })
 
+  // No more loading check - just show login if no user
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
